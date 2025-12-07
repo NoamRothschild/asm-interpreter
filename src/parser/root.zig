@@ -126,8 +126,8 @@ pub fn parseInstruction(allocator: std.mem.Allocator, inst_raw: []const u8) (Par
     var left_index_mode: IndexMode = .unknown;
     var right_index_mode: IndexMode = .unknown;
 
-    const left_op = try operand.parseOperand(allocator, left_op_str, &left_index_mode);
-    const right_op = try operand.parseOperand(allocator, right_op_str, &right_index_mode);
+    var left_op = try operand.parseOperand(allocator, left_op_str, &left_index_mode);
+    var right_op = try operand.parseOperand(allocator, right_op_str, &right_index_mode);
 
     if (right_op != null and left_op != null and (left_op.? == .imm or left_op.? == .unverified_label))
         return ParseError.InvalidOperandType; // the dst operand cannot me immediate
@@ -152,6 +152,16 @@ pub fn parseInstruction(allocator: std.mem.Allocator, inst_raw: []const u8) (Par
 
         unreachable;
     };
+    // std.debug.print("inst: {s}\nleft: {any}\ninst: {s}\nright: {any}\nfinal: {any}\n\n", .{ left_op_str, left_index_mode, right_op_str, right_index_mode, indexing_mode });
+    inline for ([2]*?Operand{ &left_op, &right_op }) |op| {
+        if (op.* != null and op.*.? == .mem) {
+            op.*.?.mem.ptr_type = switch (indexing_mode) {
+                ._16bit => .word_ptr,
+                ._8bit => .byte_ptr,
+                .unknown => return ParseError.UnknownIndexingMode,
+            };
+        }
+    }
 
     switch (inst_type) {
         .lea => {

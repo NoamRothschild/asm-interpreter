@@ -344,7 +344,8 @@ fn store(ctx: *Context, out_operand: Operand, value: u16) void {
         .mem => |v| {
             switch (v.ptr_type) {
                 .byte_ptr => ctx.dataseg[v.finalAddr(ctx)] = @as(u8, @truncate(value)),
-                .unknown, .word_ptr => ctx.writeWord(v.finalAddr(ctx), value),
+                .word_ptr => ctx.writeWord(v.finalAddr(ctx), value),
+                .unknown => unreachable, // parsing fails with UnknownIndexingMode before this could happen
             }
         },
         else => {},

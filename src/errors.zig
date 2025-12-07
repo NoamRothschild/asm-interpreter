@@ -6,6 +6,7 @@ pub const ParseError = error{
     UnknownLabel,
     InvalidExpression,
     InvalidEffectiveAddress,
+    UnknownIndexingMode,
 };
 
 pub const ExecError = error{
