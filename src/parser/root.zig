@@ -213,14 +213,14 @@ test "test parse instruction" {
     try testing.expectEqual(Instruction{
         .inst = .mov,
         .left_operand = .{ .reg = .{ .base = .ax, .selector = .full } },
-        .right_operand = .{ .mem = .{ .base = register.fromString("bx"), .index = null, .displacement = 0, .ptr_type = .unknown } },
+        .right_operand = .{ .mem = .{ .base = register.fromString("bx"), .index = null, .displacement = 0, .ptr_type = .word_ptr } },
         .indexing_mode = ._16bit,
     }, try parseInstruction(allocator, "mov ax, [bx]"));
 
     try testing.expectEqual(Instruction{
         .inst = .add,
         .left_operand = .{ .reg = .{ .base = .cx, .selector = .low } },
-        .right_operand = .{ .mem = .{ .base = null, .index = register.fromString("si"), .displacement = operand.wrapIntImm(-4), .ptr_type = .unknown } },
+        .right_operand = .{ .mem = .{ .base = null, .index = register.fromString("si"), .displacement = operand.wrapIntImm(-4), .ptr_type = .byte_ptr } },
         .indexing_mode = ._8bit,
     }, try parseInstruction(allocator, "add cl, [si - 4]"));
 
@@ -242,7 +242,7 @@ test "test parse instruction" {
     try testing.expectEqual(Instruction{
         .inst = .lea,
         .left_operand = .{ .reg = .{ .base = .bx, .selector = .full } },
-        .right_operand = .{ .mem = .{ .base = register.fromString("bp"), .index = register.fromString("si"), .displacement = operand.wrapIntImm(0x8 - 2), .ptr_type = .unknown } },
+        .right_operand = .{ .mem = .{ .base = register.fromString("bp"), .index = register.fromString("si"), .displacement = operand.wrapIntImm(0x8 - 2), .ptr_type = .word_ptr } },
         .indexing_mode = ._16bit,
     }, try parseInstruction(allocator, "lea bx, [bp + 8h + si-2d]"));
 
