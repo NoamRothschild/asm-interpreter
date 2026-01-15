@@ -16,6 +16,10 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
     });
 
+    _ = b.addModule("interpreter-module", .{
+        .root_source_file = b.path("src/module.zig"),
+    });
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
