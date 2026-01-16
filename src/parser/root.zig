@@ -55,18 +55,38 @@ pub fn parse(allocator: std.mem.Allocator, raw_code: []const u8) (ParseErrors ||
         };
         defer allocator.free(line_lowercased);
 
-        const might_label = std.mem.indexOfScalar(u8, line_lowercased, ':');
-        if (might_label) |label_end| {
-            const label_name = std.mem.trim(u8, line_lowercased[0..label_end], &std.ascii.whitespace);
+        // parse labels like `hello world:` as a normal expr to avoid accidental cases like `jnz cont:`
+        const left_trimmed = std.mem.trimLeft(u8, line_lowercased, &std.ascii.whitespace);
+        const might_label = std.mem.indexOfScalar(u8, left_trimmed, ':');
+        const first_space = std.mem.indexOfAny(u8, left_trimmed, &std.ascii.whitespace);
+        const is_space_in_label = if (first_space != null and might_label != null) first_space.? < might_label.? else false;
+
+        if (might_label != null and !is_space_in_label) {
+            const label_end = might_label.?;
+            const label_name = std.mem.trim(u8, left_trimmed[0..label_end], &std.ascii.whitespace);
             std.log.info("found a label: {s}.\n", .{label_name});
-            const followed_inst = std.mem.trim(u8, line_lowercased[label_end + 1 ..], &std.ascii.whitespace);
+            const followed_inst = std.mem.trim(u8, left_trimmed[label_end + 1 ..], &std.ascii.whitespace);
 
             try label_map.put(try allocator.dupe(u8, label_name), instructions.items.len);
 
             if (followed_inst.len != 0)
                 try instructions.append(try parseInstruction(allocator, followed_inst));
         } else {
-            const instruction = std.mem.trim(u8, line_lowercased, &std.ascii.whitespace);
+            var instruction: []u8 = @constCast(std.mem.trim(u8, left_trimmed, &std.ascii.whitespace));
+            // if the line had a `:` but it was not meant to be a label,
+            // remove all of them for parsing. ex: `jnz cont:` -> `jnz cont`
+            var should_free = false;
+            if (is_space_in_label) {
+                instruction = try allocator.dupe(u8, instruction);
+                should_free = true;
+                while (std.mem.indexOfScalar(u8, instruction, ':')) |index| {
+                    @memcpy(instruction[index .. instruction.len - 1], instruction[index + 1 ..]);
+                    instruction = instruction[0 .. instruction.len - 1];
+                }
+            }
+            defer {
+                if (should_free) allocator.free(instruction);
+            }
             if (instruction.len == 0) continue;
             try instructions.append(try parseInstruction(allocator, instruction));
         }
@@ -107,7 +127,10 @@ pub fn parseInstruction(allocator: std.mem.Allocator, inst_raw: []const u8) (Par
     const inst_str_type = inst_raw[0..inst_type_end];
     // std.debug.print("inst_type: {s}\n", .{inst_str_type});
     const might_inst_type = InstructionType.fromString(inst_str_type);
-    if (might_inst_type == null) return ParseErrors.UnknownInstruction;
+    if (might_inst_type == null) {
+        std.log.warn("unknown instruction found: {s}\n", .{inst_raw});
+        return ParseErrors.UnknownInstruction;
+    }
     const inst_type = might_inst_type.?;
 
     if (inst_type_end == inst_raw.len) {
