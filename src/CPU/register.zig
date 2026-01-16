@@ -20,10 +20,10 @@ pub const Register = struct {
     pub fn set(self: *Self, selector: register.ByteSelector, value: u16) void {
         switch (selector) {
             .low => {
-                self.*.value = (self.value & 0xFF00) | (@as(u16, @truncate(value)));
+                self.*.value = (self.value & 0xFF00) | (@as(u16, @as(u8, @truncate(value))));
             },
             .high => {
-                self.*.value = (self.value & 0x00FF) | ((@as(u16, @truncate(value))) << 8);
+                self.*.value = (self.value & 0x00FF) | ((@as(u16, @as(u8, @truncate(value)))) << 8);
             },
             .full => {
                 self.*.value = value;
