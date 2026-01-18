@@ -31,7 +31,7 @@ pub const ParseResult = struct {
     }
 };
 
-pub fn parse(allocator: std.mem.Allocator, raw_code: []const u8) (ParseErrors || error{OutOfMemory})!ParseResult {
+pub fn parse(allocator: std.mem.Allocator, raw_code: []const u8, named_offsets: ?*const std.StringHashMap(usize)) (ParseErrors || error{OutOfMemory})!ParseResult {
     var label_map = LabelMap.init(allocator);
     var instructions = std.ArrayList(Instruction).init(allocator);
     defer instructions.deinit();
@@ -70,7 +70,7 @@ pub fn parse(allocator: std.mem.Allocator, raw_code: []const u8) (ParseErrors ||
             try label_map.put(try allocator.dupe(u8, label_name), instructions.items.len);
 
             if (followed_inst.len != 0)
-                try instructions.append(try parseInstruction(allocator, followed_inst));
+                try instructions.append(try parseInstruction(allocator, followed_inst, named_offsets));
         } else {
             var instruction: []u8 = @constCast(std.mem.trim(u8, left_trimmed, &std.ascii.whitespace));
             // if the line had a `:` but it was not meant to be a label,
@@ -88,10 +88,10 @@ pub fn parse(allocator: std.mem.Allocator, raw_code: []const u8) (ParseErrors ||
                 if (should_free) allocator.free(instruction);
             }
             if (instruction.len == 0) continue;
-            try instructions.append(try parseInstruction(allocator, instruction));
+            try instructions.append(try parseInstruction(allocator, instruction, named_offsets));
         }
     }
-    try instructions.append(try parseInstruction(allocator, "hlt"));
+    try instructions.append(try parseInstruction(allocator, "hlt", null));
 
     const instruction_arr: []Instruction = try allocator.alloc(Instruction, instructions.items.len);
     @memcpy(instruction_arr, instructions.items);
@@ -122,7 +122,7 @@ pub fn parse(allocator: std.mem.Allocator, raw_code: []const u8) (ParseErrors ||
     };
 }
 
-pub fn parseInstruction(allocator: std.mem.Allocator, inst_raw: []const u8) (ParseErrors || error{OutOfMemory})!Instruction {
+pub fn parseInstruction(allocator: std.mem.Allocator, inst_raw: []const u8, named_offsets: ?*const std.StringHashMap(usize)) (ParseErrors || error{OutOfMemory})!Instruction {
     const inst_type_end = (std.mem.indexOf(u8, inst_raw, " ") orelse inst_raw.len);
     const inst_str_type = inst_raw[0..inst_type_end];
     // std.debug.print("inst_type: {s}\n", .{inst_str_type});
@@ -149,8 +149,8 @@ pub fn parseInstruction(allocator: std.mem.Allocator, inst_raw: []const u8) (Par
     var left_index_mode: IndexMode = .unknown;
     var right_index_mode: IndexMode = .unknown;
 
-    var left_op = try operand.parseOperand(allocator, left_op_str, &left_index_mode);
-    var right_op = try operand.parseOperand(allocator, right_op_str, &right_index_mode);
+    var left_op = try operand.parseOperand(allocator, left_op_str, &left_index_mode, null);
+    var right_op = try operand.parseOperand(allocator, right_op_str, &right_index_mode, named_offsets);
 
     if (right_op != null and left_op != null and (left_op.? == .imm or left_op.? == .unverified_label))
         return ParseError.InvalidOperandType; // the dst operand cannot me immediate
@@ -238,28 +238,28 @@ test "test parse instruction" {
         .left_operand = .{ .reg = .{ .base = .ax, .selector = .full } },
         .right_operand = .{ .mem = .{ .base = register.fromString("bx"), .index = null, .displacement = 0, .ptr_type = .word_ptr } },
         .indexing_mode = ._16bit,
-    }, try parseInstruction(allocator, "mov ax, [bx]"));
+    }, try parseInstruction(allocator, "mov ax, [bx]", null));
 
     try testing.expectEqual(Instruction{
         .inst = .add,
         .left_operand = .{ .reg = .{ .base = .cx, .selector = .low } },
         .right_operand = .{ .mem = .{ .base = null, .index = register.fromString("si"), .displacement = operand.wrapIntImm(-4), .ptr_type = .byte_ptr } },
         .indexing_mode = ._8bit,
-    }, try parseInstruction(allocator, "add cl, [si - 4]"));
+    }, try parseInstruction(allocator, "add cl, [si - 4]", null));
 
     try testing.expectEqual(Instruction{
         .inst = .mov,
         .left_operand = .{ .mem = .{ .base = register.fromString("bp"), .index = null, .displacement = operand.wrapIntImm(-0x12), .ptr_type = .byte_ptr } },
         .right_operand = .{ .reg = .{ .base = .dx, .selector = .low } },
         .indexing_mode = ._8bit,
-    }, try parseInstruction(allocator, "mov [byte ptr bp-12h], dl"));
+    }, try parseInstruction(allocator, "mov [byte ptr bp-12h], dl", null));
 
     try testing.expectEqual(Instruction{
         .inst = .xor,
         .left_operand = .{ .reg = .{ .base = .cx, .selector = .full } },
         .right_operand = .{ .imm = 0b10101010 },
         .indexing_mode = ._16bit,
-    }, try parseInstruction(allocator, "xor cx, 10101010b"));
+    }, try parseInstruction(allocator, "xor cx, 10101010b", null));
 
     // NOTE: using multiple displacements is VERY BUGGY and should not be done.
     try testing.expectEqual(Instruction{
@@ -267,12 +267,12 @@ test "test parse instruction" {
         .left_operand = .{ .reg = .{ .base = .bx, .selector = .full } },
         .right_operand = .{ .mem = .{ .base = register.fromString("bp"), .index = register.fromString("si"), .displacement = operand.wrapIntImm(0x8 - 2), .ptr_type = .word_ptr } },
         .indexing_mode = ._16bit,
-    }, try parseInstruction(allocator, "lea bx, [bp + 8h + si-2d]"));
+    }, try parseInstruction(allocator, "lea bx, [bp + 8h + si-2d]", null));
 
     try testing.expectEqual(Instruction{
         .inst = .hlt,
         .left_operand = null,
         .right_operand = null,
         .indexing_mode = .unknown,
-    }, try parseInstruction(allocator, "hlt"));
+    }, try parseInstruction(allocator, "hlt", null));
 }

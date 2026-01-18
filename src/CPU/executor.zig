@@ -382,7 +382,7 @@ fn resetCtx(ctx: *Context) void {
 }
 
 fn parseInst(s: []const u8) !parser_root.Instruction {
-    return try parser_root.parseInstruction(testing.allocator, s);
+    return try parser_root.parseInstruction(testing.allocator, s, null);
 }
 
 test "executor mov/lea" {

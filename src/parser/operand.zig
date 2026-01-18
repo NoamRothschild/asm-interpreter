@@ -46,8 +46,13 @@ pub const OperandParseErrors = ParseError;
 /// returns `null` when raw_op.len == 0
 /// fails if an operand was found, but was unable to be diagnosed, or
 /// an error had occured while parsig after the operand type had been found.
-pub fn parseOperand(allocator: std.mem.Allocator, raw_op: []const u8, mode: *IndexMode) (OperandParseErrors || error{OutOfMemory})!?Operand {
+pub fn parseOperand(allocator: std.mem.Allocator, raw_op: []const u8, mode: *IndexMode, named_offsets: ?*const std.StringHashMap(usize)) (OperandParseErrors || error{OutOfMemory})!?Operand {
     if (raw_op.len == 0) return null;
+
+    const might_offset = try parseOffset(raw_op, named_offsets);
+    if (might_offset) |imm| {
+        return Operand{ .imm = imm };
+    }
 
     const might_reg = register.fromString(raw_op);
     if (might_reg) |reg| {
@@ -71,6 +76,16 @@ pub fn parseOperand(allocator: std.mem.Allocator, raw_op: []const u8, mode: *Ind
     }
 
     return Operand{ .unverified_label = try allocator.dupe(u8, raw_op) };
+}
+
+fn parseOffset(raw_op: []const u8, named_offsets: ?*const std.StringHashMap(usize)) OperandParseErrors!?u16 {
+    if (named_offsets == null) return null;
+    if (!std.mem.startsWith(u8, raw_op, "offset")) return null;
+    const named_offset_str = std.mem.trim(u8, raw_op[6..], &std.ascii.whitespace);
+    if (named_offsets.?.get(named_offset_str)) |imm_value|
+        return @truncate(imm_value)
+    else
+        return OperandParseErrors.UnknownOffsetLabel;
 }
 
 fn parseImmediate(immediate: []const u8) OperandParseErrors!?u16 {

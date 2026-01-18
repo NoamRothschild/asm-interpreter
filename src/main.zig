@@ -72,7 +72,7 @@ pub fn main() !void {
             _ = std.mem.replace(u8, code, "\\n", "\n", fixed_code);
             defer allocator.free(fixed_code);
 
-            try runner.run(allocator, &ctx, fixed_code);
+            try runner.run(allocator, &ctx, fixed_code, null);
             if (!silent) try stdout.writer().print("CPU Context: {}\n", .{ctx});
             return;
         }
