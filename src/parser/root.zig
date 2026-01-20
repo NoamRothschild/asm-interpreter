@@ -10,6 +10,7 @@ pub const InstructionType = @import("instruction.zig").InstructionType;
 pub const IndexMode = @import("instruction.zig").IndexMode;
 pub const LabelMap = @import("label.zig").LabelMap;
 pub const Operand = @import("operand.zig").Operand;
+pub const BaseRegister = @import("register.zig").BaseRegister;
 
 const operand = @import("operand.zig");
 const ParseError = @import("../errors.zig").ParseError;
