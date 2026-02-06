@@ -74,7 +74,7 @@ pub fn main() !void {
             defer allocator.free(fixed_code);
 
             var parser_ctx = parser.init(allocator, null);
-            try runner.run(&parser_ctx, &ctx, fixed_code);
+            try runner.run(&parser_ctx, &ctx, fixed_code, null);
             if (!silent) try stdout.writer().print("CPU Context: {}\n", .{ctx});
             return;
         }
