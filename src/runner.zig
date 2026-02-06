@@ -15,6 +15,9 @@ pub fn run(parser_ctx: *parser, ctx: *Context, code: []const u8, timeout: ?usize
     while ((if (timeout) |tm| inst_ran_count != tm else true) and parser_ctx.instructions[ctx.ip].inst != .hlt) : (inst_ran_count += 1) {
         try executor.executeInstruction(ctx);
     }
+
+    if (timeout and timeout.? == inst_ran_count)
+        return error.Timeout;
 }
 
 pub fn run_file(parser_ctx: *parser, ctx: *Context, file_path: []const u8) !void {
