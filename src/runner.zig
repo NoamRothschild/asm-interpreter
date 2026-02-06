@@ -3,24 +3,24 @@ const parser = @import("parser/root.zig");
 const executor = @import("CPU/executor.zig");
 const Context = @import("CPU/context.zig").Context;
 
-pub fn run(allocator: std.mem.Allocator, ctx: *Context, code: []const u8, named_offsets: ?*const std.StringHashMap(usize)) !void {
-    var parser_result = parser.parse(allocator, code, named_offsets) catch |err| {
-        std.log.warn("parser failed!, error: {s}\n", .{@errorName(err)});
+pub fn run(parser_ctx: *parser, ctx: *Context, code: []const u8) !void {
+    parser_ctx.parse(code) catch |err| {
+        std.log.warn("parser failed on line {d}!, error: {s}\nline:\n{s}", .{ parser_ctx.line, @errorName(err), parser_ctx.line_slice });
         return err;
     };
-    defer parser_result.deinit();
-    ctx.instructions = parser_result.instructions;
+    defer parser_ctx.deinit();
+    ctx.instructions = parser_ctx.instructions;
 
-    while (parser_result.instructions[ctx.ip].inst != .hlt) {
+    while (parser_ctx.instructions[ctx.ip].inst != .hlt) {
         try executor.executeInstruction(ctx);
     }
 }
 
-pub fn run_file(allocator: std.mem.Allocator, ctx: *Context, file_path: []const u8) !void {
+pub fn run_file(parser_ctx: *parser, ctx: *Context, file_path: []const u8) !void {
     var file = try std.fs.cwd().openFile(file_path, .{ .mode = .read_only });
     defer file.close();
 
-    const code = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
-    defer allocator.free(code);
-    try run(allocator, ctx, code, null);
+    const code = try file.readToEndAlloc(parser_ctx.allocator, std.math.maxInt(usize));
+    defer parser_ctx.allocator.free(code);
+    try run(parser_ctx, ctx, code);
 }

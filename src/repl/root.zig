@@ -37,7 +37,8 @@ pub fn main(config: anytype) !void {
             continue;
         }
 
-        try inst_list.append(parser.parseInstruction(allocator, instruction, null) catch |err| {
+        var parser_ = parser.init(allocator, null);
+        try inst_list.append(parser.parseInstruction(&parser_, instruction) catch |err| {
             std.log.warn("Errored while parsing instruction \"{s}\"\n{s}", .{ instruction, @errorName(err) });
             continue;
         });

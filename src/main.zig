@@ -62,7 +62,8 @@ pub fn main() !void {
         @panic("not implemeted"); // TODO: implement
     } else if (arg_ctx.eql("-r") or arg_ctx.eql("--run")) {
         if (args_iterator.next()) |tested_file| {
-            try runner.run_file(allocator, &ctx, tested_file);
+            var parser_ctx = parser.init(allocator, null);
+            try runner.run_file(&parser_ctx, &ctx, tested_file);
             if (!silent) try stdout.writer().print("CPU Context: {}\n", .{ctx});
             return;
         }
@@ -72,7 +73,8 @@ pub fn main() !void {
             _ = std.mem.replace(u8, code, "\\n", "\n", fixed_code);
             defer allocator.free(fixed_code);
 
-            try runner.run(allocator, &ctx, fixed_code, null);
+            var parser_ctx = parser.init(allocator, null);
+            try runner.run(&parser_ctx, &ctx, fixed_code);
             if (!silent) try stdout.writer().print("CPU Context: {}\n", .{ctx});
             return;
         }
