@@ -16,7 +16,7 @@ pub fn run(parser_ctx: *parser, ctx: *Context, code: []const u8, timeout: ?usize
         try executor.executeInstruction(ctx);
     }
 
-    if (timeout and timeout.? == inst_ran_count)
+    if (timeout != null and timeout.? == inst_ran_count)
         return error.Timeout;
 }
 
