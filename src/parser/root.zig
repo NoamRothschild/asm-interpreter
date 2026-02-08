@@ -1,5 +1,6 @@
 // const pc = @import("../pc.zig");
 const std = @import("std");
+const module = @import("../module.zig");
 // const CPUContext = pc.CPUContext;
 const testing = std.testing;
 pub const register = @import("register.zig");
@@ -90,7 +91,8 @@ pub fn parse(parser: *@This(), raw_code: []const u8) (ParseErrors || error{OutOf
         if (might_label != null and !is_space_in_label) {
             const label_end = might_label.?;
             const label_name = std.mem.trim(u8, left_trimmed[0..label_end], &std.ascii.whitespace);
-            std.log.info("found a label: {s}.\n", .{label_name});
+            if (!module.silent)
+                std.log.info("found a label: {s}.\n", .{label_name});
             const followed_inst = std.mem.trim(u8, left_trimmed[label_end + 1 ..], &std.ascii.whitespace);
 
             try parser.label_map.put(try allocator.dupe(u8, label_name), instructions.items.len);
@@ -132,7 +134,8 @@ pub fn parse(parser: *@This(), raw_code: []const u8) (ParseErrors || error{OutOf
                 if (parser.label_map.get(unverified_label)) |line| {
                     maybe_operand.* = .{ .imm = @truncate(line) };
                 } else {
-                    std.log.err("Tried to access an unknown label: {s}\n", .{unverified_label});
+                    if (!module.silent)
+                        std.log.err("Tried to access an unknown label: {s}\n", .{unverified_label});
                     has_invalid_label = true;
                 }
                 allocator.free(unverified_label);
@@ -151,7 +154,8 @@ pub fn parseInstruction(parser: *@This(), inst_raw: []const u8) (ParseErrors || 
     // std.debug.print("inst_type: {s}\n", .{inst_str_type});
     const might_inst_type = InstructionType.fromString(inst_str_type);
     if (might_inst_type == null) {
-        std.log.warn("unknown instruction found: {s}\n", .{inst_raw});
+        if (!module.silent)
+            std.log.warn("unknown instruction found: {s}\n", .{inst_raw});
         return ParseErrors.UnknownInstruction;
     }
     const inst_type = might_inst_type.?;

@@ -25,7 +25,7 @@ const repl_message: []const u8 =
     \\
 ;
 
-pub var silent: bool = false;
+pub var silent: *bool = &(@import("module.zig").silent);
 
 pub fn main() !void {
     var args_iterator = std.process.args();
@@ -46,7 +46,7 @@ pub fn main() !void {
     }{ .arg = args_iterator.next() orelse "" };
 
     if (arg_ctx.eql("-s") or arg_ctx.eql("--silent")) {
-        silent = true;
+        silent.* = true;
         arg_ctx.arg = args_iterator.next() orelse "";
     }
 
@@ -64,7 +64,7 @@ pub fn main() !void {
         if (args_iterator.next()) |tested_file| {
             var parser_ctx = parser.init(allocator, null);
             try runner.run_file(&parser_ctx, &ctx, tested_file);
-            if (!silent) try stdout.writer().print("CPU Context: {}\n", .{ctx});
+            if (!silent.*) try stdout.writer().print("CPU Context: {}\n", .{ctx});
             return;
         }
     } else if (arg_ctx.eql("-e") or arg_ctx.eql("--execute")) {
@@ -75,7 +75,7 @@ pub fn main() !void {
 
             var parser_ctx = parser.init(allocator, null);
             try runner.run(&parser_ctx, &ctx, fixed_code, null);
-            if (!silent) try stdout.writer().print("CPU Context: {}\n", .{ctx});
+            if (!silent.*) try stdout.writer().print("CPU Context: {}\n", .{ctx});
             return;
         }
     } else {
@@ -87,7 +87,7 @@ pub fn main() !void {
 
 // use default logging only when `silent` is set to false
 fn _logFn(comptime message_level: std.log.Level, comptime scope: @TypeOf(.enum_literal), comptime format: []const u8, args: anytype) void {
-    if (silent) return;
+    if (silent.*) return;
     _ = scope;
     std.debug.print("[{s}] ", .{@tagName(message_level)});
     std.debug.print(format, args);

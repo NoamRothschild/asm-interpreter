@@ -1,4 +1,5 @@
 const std = @import("std");
+const module = @import("../module.zig");
 const executor = @import("../CPU/executor.zig");
 const parser = @import("../parser/root.zig");
 const Context = @import("../CPU/context.zig").Context;
@@ -39,13 +40,15 @@ pub fn main(config: anytype) !void {
 
         var parser_ = parser.init(allocator, null);
         try inst_list.append(parser.parseInstruction(&parser_, instruction) catch |err| {
-            std.log.warn("Errored while parsing instruction \"{s}\"\n{s}", .{ instruction, @errorName(err) });
+            if (!module.silent)
+                std.log.warn("Errored while parsing instruction \"{s}\"\n{s}", .{ instruction, @errorName(err) });
             continue;
         });
         ctx.instructions = inst_list.items;
 
         executor.executeInstruction(&ctx) catch |err| {
-            std.log.warn("Errored while executing instruction in line {d}\n{s}", .{ ctx.ip, @errorName(err) });
+            if (!module.silent)
+                std.log.warn("Errored while executing instruction in line {d}\n{s}", .{ ctx.ip, @errorName(err) });
             continue;
         };
 
