@@ -37,39 +37,7 @@ pub const TestEntry = struct {
 
 pub const TestJson = []TestEntry;
 
-const segment_prefixes = [_][]const u8{ "cs:", "ds:", "es:", "ss:" };
-
-/// aligns test names to the format expected by our interpreter
-/// example: byte [ds:bx] -> [byte ptr bx]
-fn alignTestName(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
-    var out = std.ArrayList(u8).init(allocator);
-    errdefer out.deinit();
-
-    var i: usize = 0;
-    while (i < name.len) {
-        if (std.mem.startsWith(u8, name[i..], "byte [")) {
-            try out.appendSlice("[byte ptr ");
-            i += "byte [".len;
-        } else if (std.mem.startsWith(u8, name[i..], "word [")) {
-            try out.appendSlice("[word ptr ");
-            i += "word [".len;
-        } else {
-            var skipped: bool = false;
-            for (segment_prefixes) |pfx| {
-                if (std.mem.startsWith(u8, name[i..], pfx)) {
-                    i += pfx.len;
-                    skipped = true;
-                    break;
-                }
-            }
-            if (!skipped) {
-                try out.append(name[i]);
-                i += 1;
-            }
-        }
-    }
-    return try out.toOwnedSlice();
-}
+const flatten = @import("flatten.zig");
 
 pub fn fromFilename(name: []const u8) !TestJson {
     const allocator = std.heap.page_allocator;
@@ -90,7 +58,7 @@ pub fn fromFilename(name: []const u8) !TestJson {
 
     const tests = try std.json.parseFromSliceLeaky(TestJson, allocator, json_text, .{});
     for (tests) |*entry| {
-        entry.name = try alignTestName(allocator, entry.name);
+        try flatten.flattenTestEntry(allocator, entry);
     }
     return tests;
 }
@@ -101,11 +69,11 @@ test "fromFilename loads and aligns instruction names" {
     try testing.expect(tests.len > 0);
 
     for (tests) |entry| {
-        for (segment_prefixes) |pfx| {
-            try testing.expect(!std.mem.containsAtLeast(u8, entry.name, pfx.len, pfx));
-        }
         try testing.expect(!std.mem.containsAtLeast(u8, entry.name, "byte [".len, "byte ["));
         try testing.expect(!std.mem.containsAtLeast(u8, entry.name, "word [".len, "word ["));
+        for (flatten.segment_prefixes) |pfx| {
+            try testing.expect(!std.mem.containsAtLeast(u8, entry.name, pfx.len, pfx));
+        }
     }
 
     const mem_test = blk: {

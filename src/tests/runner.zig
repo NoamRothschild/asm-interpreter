@@ -3,10 +3,11 @@ const testing = std.testing;
 
 const Context = @import("../CPU/context.zig").Context;
 const executor = @import("../CPU/executor.zig");
-const module = @import("../module.zig");
 const parser_root = @import("../parser/root.zig");
 const parser = @import("parser.zig");
 const context = @import("context.zig");
+
+pub const max_detail_failures = 50;
 
 pub const RunStats = struct {
     skipped_parse: usize = 0,
@@ -38,11 +39,18 @@ pub fn runEntry(entry: parser.TestEntry, stats: *RunStats) void {
         return;
     };
 
-    context.compareFinal(&ctx, entry.final) catch |err| {
-        std.log.warn("mismatch for '{s}' (#{d}): {s}", .{ entry.name, entry.test_num, @errorName(err) });
+    if (context.findMismatch(&ctx, entry.final)) |mismatch| {
         stats.failed += 1;
+
+        if (stats.failed <= max_detail_failures) {
+            var buf: [256]u8 = undefined;
+            var fbs = std.io.fixedBufferStream(&buf);
+            context.printMismatch(fbs.writer(), mismatch) catch {};
+            std.debug.print("mismatch for '{s}' (#{d}): {s}\n", .{ entry.name, entry.test_num, fbs.getWritten() });
+        }
+
         return;
-    };
+    }
 
     stats.passed += 1;
 }

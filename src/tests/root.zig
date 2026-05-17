@@ -4,5 +4,6 @@ pub const runner = @import("runner.zig");
 
 test {
     _ = @import("parser.zig");
+    _ = @import("flatten.zig");
     _ = @import("suite.zig");
 }

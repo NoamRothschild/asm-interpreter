@@ -10,8 +10,12 @@ test "8086 suite 00" {
 
     var stats: runner.RunStats = .{};
     try runner.runSuite("00", &stats);
+    if (stats.failed > runner.max_detail_failures) {
+        std.debug.print("suite 00: detailed logs shown for first {d} failures only\n", .{
+            runner.max_detail_failures,
+        });
+    }
 
-    // Test binaries use compiler/test_runner.zig, which only prints log_level >= .warn.
     std.debug.print(
         "suite 00: passed={d} parse_skipped={d} exec_skipped={d} failed={d}\n",
         .{ stats.passed, stats.skipped_parse, stats.skipped_exec, stats.failed },

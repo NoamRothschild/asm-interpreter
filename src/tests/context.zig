@@ -64,6 +64,62 @@ pub fn applyInitial(ctx: *Context, initial: parser.CpuState) void {
     ctx.ip = 0;
 }
 
+pub const Mismatch = union(enum) {
+    register: struct { name: []const u8, expected: u16, actual: u16 },
+    flags: struct { expected: u16, actual: u16 },
+    ram: struct { addr: usize, expected: u8, actual: u8 },
+};
+
+pub fn findMismatch(ctx: *const Context, final: parser.CpuState) ?Mismatch {
+    inline for (supported_regs) |name| {
+        const expected = @field(final.regs, name);
+        if (expected) |exp| {
+            const reg_id = register.fromString(name).?;
+            const actual = ctx.getRegister(reg_id);
+            const exp16: u16 = @truncate(exp);
+            if (actual != exp16)
+                return .{ .register = .{ .name = name, .expected = exp16, .actual = actual } };
+        }
+    }
+
+    if (final.regs.flags) |expected| {
+        const actual = flagsToWord(ctx.flags);
+        const exp: u16 = @truncate(expected);
+        const exp_masked = exp & emulated_flags_mask;
+        const actual_masked = actual & emulated_flags_mask;
+        if (actual_masked != exp_masked)
+            return .{ .flags = .{ .expected = exp_masked, .actual = actual_masked } };
+    }
+
+    for (final.ram) |entry| {
+        const addr = entry[0];
+        const truncated = truncateAddr(addr);
+        const expected = @as(u8, @truncate(entry[1]));
+        const actual = ctx.dataseg[truncated];
+        if (actual != expected)
+            return .{ .ram = .{ .addr = addr, .expected = expected, .actual = actual } };
+    }
+
+    return null;
+}
+
+pub fn printMismatch(writer: anytype, mismatch: Mismatch) !void {
+    switch (mismatch) {
+        .register => |m| try writer.print(
+            "register {s} expected=0x{x} got=0x{x}",
+            .{ m.name, m.expected, m.actual },
+        ),
+        .flags => |m| try writer.print(
+            "flags (C/Z/S/O) expected=0x{x} got=0x{x}",
+            .{ m.expected, m.actual },
+        ),
+        .ram => |m| try writer.print(
+            "ram [0x{x}] expected=0x{x} got=0x{x}",
+            .{ m.addr, m.expected, m.actual },
+        ),
+    }
+}
+
 pub const CompareError = error{
     RegisterMismatch,
     FlagsMismatch,
@@ -71,27 +127,10 @@ pub const CompareError = error{
 };
 
 pub fn compareFinal(ctx: *const Context, final: parser.CpuState) CompareError!void {
-    inline for (supported_regs) |name| {
-        const expected = @field(final.regs, name);
-        if (expected) |exp| {
-            const reg_id = register.fromString(name).?;
-            const actual = ctx.getRegister(reg_id);
-            if (actual != @as(u16, @truncate(exp)))
-                return error.RegisterMismatch;
-        }
-    }
-
-    if (final.regs.flags) |expected| {
-        const actual = flagsToWord(ctx.flags);
-        const exp: u16 = @truncate(expected);
-        if ((actual & emulated_flags_mask) != (exp & emulated_flags_mask))
-            return error.FlagsMismatch;
-    }
-
-    for (final.ram) |entry| {
-        const addr = truncateAddr(entry[0]);
-        const expected = @as(u8, @truncate(entry[1]));
-        if (ctx.dataseg[addr] != expected)
-            return error.RamMismatch;
-    }
+    const m = findMismatch(ctx, final) orelse return;
+    return switch (m) {
+        .register => error.RegisterMismatch,
+        .flags => error.FlagsMismatch,
+        .ram => error.RamMismatch,
+    };
 }
