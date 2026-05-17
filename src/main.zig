@@ -102,5 +102,5 @@ test "all tests" {
     _ = @import("parser/root.zig");
     _ = @import("parser/operand.zig");
     _ = @import("CPU/executor.zig");
-    _ = @import("tests/parser.zig");
+    _ = @import("tests/root.zig");
 }
