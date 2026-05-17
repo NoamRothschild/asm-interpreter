@@ -1,0 +1,3 @@
+[submodule "test_suite"]
+	path = test_suite
+	url = https://github.com/SingleStepTests/8086
