@@ -63,7 +63,9 @@ pub fn fromFilename(allocator: std.mem.Allocator, name: []const u8) !TestJson {
 
 test "fromFilename loads and aligns instruction names" {
     const testing = std.testing;
-    const tests = try fromFilename(testing.allocator, "00");
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const tests = try fromFilename(arena.allocator(), "00");
     try testing.expect(tests.len > 0);
 
     for (tests) |entry| {

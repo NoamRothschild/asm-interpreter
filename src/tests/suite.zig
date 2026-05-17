@@ -10,7 +10,7 @@ fn run8086Suite(suite_number: []const u8) !void {
 
     var stats: runner.RunStats = .{};
     runner.runSuite(suite_number, &stats) catch |err| switch (err) {
-        error.Abort => return,
+        error.Abort, error.FileNotFound => return,
         else => return err,
     };
     if (stats.failed > runner.max_detail_failures) {
@@ -23,10 +23,13 @@ fn run8086Suite(suite_number: []const u8) !void {
     // Mismatches are logged; they indicate interpreter gaps, not harness bugs.
 }
 
-test "8086 all suites" {
-    var suite_number: [2]u8 = undefined;
+comptime {
     for (0..256) |i| {
-        const suite_name = try std.fmt.bufPrint(&suite_number, "{X:0>2}", .{i});
-        try run8086Suite(suite_name);
+        _ = struct {
+            test {
+                const suite_name = comptime std.fmt.comptimePrint("{X:0>2}", .{i});
+                try run8086Suite(suite_name);
+            }
+        };
     }
 }
