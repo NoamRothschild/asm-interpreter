@@ -85,6 +85,7 @@ fn regFromState(regs: Regs, id: register.RegisterIdentifier) u16 {
         .si => regs.si,
         .di => regs.di,
         .bp => regs.bp,
+        .sp => regs.sp,
     } orelse 0;
     const value: u16 = @truncate(raw);
     return switch (id.selector) {

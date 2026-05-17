@@ -16,6 +16,7 @@ pub const Context = struct {
     si: Register = Register{ .value = undefined },
     di: Register = Register{ .value = undefined },
     bp: Register = Register{ .value = undefined },
+    sp: Register = Register{ .value = undefined },
     ip: usize, // the index into the instruction list
     flags: FlagsRegister = std.mem.zeroes(FlagsRegister),
 
@@ -41,6 +42,7 @@ pub const Context = struct {
             .si => &self.si,
             .di => &self.di,
             .bp => &self.bp,
+            .sp => &self.sp,
         };
     }
 
@@ -66,7 +68,7 @@ pub const Context = struct {
         _: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
-        try writer.print("{{ ax = 0x{x}, bx = 0x{x}, cx = 0x{x}, dx = 0x{x}, si = 0x{x}, di = 0x{x}, bp = 0x{x}, ip = {d}, flags = {} }}", .{
+        try writer.print("{{ ax = 0x{x}, bx = 0x{x}, cx = 0x{x}, dx = 0x{x}, si = 0x{x}, di = 0x{x}, bp = 0x{x}, sp = 0x{x}, ip = {d}, flags = {} }}", .{
             self.ax.value,
             self.bx.value,
             self.cx.value,
@@ -74,6 +76,7 @@ pub const Context = struct {
             self.si.value,
             self.di.value,
             self.bp.value,
+            self.sp.value,
             self.ip,
             self.flags,
         });

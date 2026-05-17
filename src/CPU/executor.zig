@@ -296,7 +296,7 @@ fn setAddFlags16(flags: *FlagsRegister, lval: u16, rval: u16, res: u16) void {
     flags.s = (res >> 15) != 0;
     const ls: i16 = @bitCast(lval);
     const rs: i16 = @bitCast(rval);
-    const rs_res: i16 = ls + rs;
+    const rs_res: i16 = @bitCast(res);
     flags.o = (ls > 0 and rs > 0 and rs_res < 0) or (ls < 0 and rs < 0 and rs_res > 0);
 }
 
@@ -306,7 +306,7 @@ fn setSubFlags16(flags: *FlagsRegister, lval: u16, rval: u16, res: u16) void {
     flags.s = (res >> 15) != 0;
     const ls: i16 = @bitCast(lval);
     const rs: i16 = @bitCast(rval);
-    const rs_res: i16 = ls - rs;
+    const rs_res: i16 = @bitCast(res);
     flags.o = (ls > 0 and rs < 0 and rs_res < 0) or (ls < 0 and rs > 0 and rs_res > 0);
 }
 
@@ -596,6 +596,7 @@ fn initTestCtx() Context {
         .si = .{ .value = 0 },
         .di = .{ .value = 0 },
         .bp = .{ .value = 0 },
+        .sp = .{ .value = 0 },
         .ip = 0,
         .flags = std.mem.zeroes(FlagsRegister),
         .dataseg = [_]u8{0} ** 65536,
@@ -611,6 +612,7 @@ fn resetCtx(ctx: *Context) void {
     ctx.*.si.value = 0;
     ctx.*.di.value = 0;
     ctx.*.bp.value = 0;
+    ctx.*.sp.value = 0;
     ctx.ip = 0;
     ctx.flags = std.mem.zeroes(FlagsRegister);
     @memset(&ctx.dataseg, 0);

@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const BaseRegister = enum { ax, bx, cx, dx, si, di, bp };
+pub const BaseRegister = enum { ax, bx, cx, dx, si, di, bp, sp };
 
 pub const ByteSelector = enum { low, high, full };
 
@@ -59,6 +59,7 @@ pub fn toString(reg_id: RegisterIdentifier) ?[]const u8 {
         .{ .name = "si", .base = .si, .sel = .full },
         .{ .name = "di", .base = .di, .sel = .full },
         .{ .name = "bp", .base = .bp, .sel = .full },
+        .{ .name = "sp", .base = .sp, .sel = .full },
     };
 
     for (mapping) |map| {

@@ -39,7 +39,7 @@ pub fn flagsToWord(flags: FlagsRegister) u16 {
 /// Flags the executor currently updates (parity and auxiliary carry are not modeled yet).
 const emulated_flags_mask: u16 = (1 << 0) | (1 << 6) | (1 << 7) | (1 << 11);
 
-const supported_regs = [_][]const u8{ "ax", "bx", "cx", "dx", "si", "di", "bp" };
+const supported_regs = [_][]const u8{ "ax", "bx", "cx", "dx", "si", "di", "bp", "sp" };
 
 pub fn applyInitial(ctx: *Context, initial: parser.CpuState) void {
     @memset(&ctx.dataseg, 0);
