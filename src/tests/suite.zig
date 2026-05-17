@@ -4,6 +4,7 @@ const testing = std.testing;
 const module = @import("../module.zig");
 const runner = @import("runner.zig");
 const log = @import("log.zig");
+const suite_names = @import("suite_names");
 
 fn run8086Suite(suite_number: []const u8) !void {
     module.silent = true;
@@ -31,10 +32,9 @@ fn run8086Suite(suite_number: []const u8) !void {
 }
 
 comptime {
-    for (0..256) |i| {
+    for (suite_names.names) |suite_name| {
         _ = struct {
             test {
-                const suite_name = comptime std.fmt.comptimePrint("{X:0>2}", .{i});
                 try run8086Suite(suite_name);
             }
         };
