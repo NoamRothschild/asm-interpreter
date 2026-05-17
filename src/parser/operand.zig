@@ -183,7 +183,10 @@ pub fn valueOf(operand: Operand, ctx: *const Context) u16 {
 
             return read_value;
         },
-        .unverified_label => unreachable,
+        .unverified_label => {
+            std.log.warn("thought that {s} is an unverified label", .{operand.unverified_label});
+            unreachable;
+        },
     };
 }
 

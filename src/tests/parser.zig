@@ -54,17 +54,19 @@ pub fn fromFilename(allocator: std.mem.Allocator, name: []const u8) !TestJson {
     const json_text = try json_buf.toOwnedSlice();
     defer allocator.free(json_text);
 
-    const tests = try std.json.parseFromSliceLeaky(TestJson, allocator, json_text, .{});
-    for (tests) |*entry| {
-        flatten.flattenTestEntry(allocator, entry) catch |err| {
+    const parsed = try std.json.parseFromSliceLeaky(TestJson, allocator, json_text, .{});
+    var kept = std.ArrayList(TestEntry).init(allocator);
+    for (parsed) |*entry| {
+        const keep = flatten.flattenTestEntry(allocator, entry) catch |err| {
             if (err == error.UnknownInstruction) {
                 std.log.warn("skipping suite set: got UnknownInstruction on `{s}` (assuming unsupported)", .{entry.name});
                 return error.Abort;
             }
             return err;
         };
+        if (keep) try kept.append(entry.*);
     }
-    return tests;
+    return try kept.toOwnedSlice();
 }
 
 test "fromFilename loads and aligns instruction names" {

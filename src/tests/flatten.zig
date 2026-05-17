@@ -8,6 +8,8 @@ const context = @import("context.zig");
 
 pub const segment_prefixes = [_][]const u8{ "cs:", "ds:", "es:", "ss:" };
 
+pub const segment_names = [_][]const u8{ "cs", "ds", "es", "ss" };
+
 pub const Segment = enum { cs, ds, es, ss };
 
 const segment_map = [_]struct { prefix: []const u8, segment: Segment }{
@@ -21,6 +23,22 @@ pub const Regs = @import("parser.zig").Regs;
 pub const Ram = @import("parser.zig").Ram;
 pub const CpuState = @import("parser.zig").CpuState;
 pub const TestEntry = @import("parser.zig").TestEntry;
+
+/// True when `name` contains a segment mnemonic bounded by non-alphabetic characters.
+/// For example, "andes" does not match "es", but "[ds:bx]" matches "ds".
+pub fn hasSegmentInName(name: []const u8) bool {
+    for (segment_names) |seg| {
+        var start: usize = 0;
+        while (std.mem.indexOfPos(u8, name, start, seg)) |idx| {
+            const before_ok = idx == 0 or !std.ascii.isAlphabetic(name[idx - 1]);
+            const after_idx = idx + seg.len;
+            const after_ok = after_idx >= name.len or !std.ascii.isAlphabetic(name[after_idx]);
+            if (before_ok and after_ok) return true;
+            start = idx + 1;
+        }
+    }
+    return false;
+}
 
 pub fn detectSegmentInName(name: []const u8) ?Segment {
     const l_bracket = std.mem.indexOfScalar(u8, name, '[') orelse return null;
@@ -124,25 +142,38 @@ fn remapOperandRam(state: *CpuState, segmented: u16, flat: u16, width: usize) vo
 }
 
 /// Strips segment overrides from the mnemonic and rewrites operand RAM to flat addresses.
-pub fn flattenTestEntry(allocator: std.mem.Allocator, entry: *TestEntry) !void {
+/// Returns `false` when the entry should be ignored (segment still present after alignment).
+pub fn flattenTestEntry(allocator: std.mem.Allocator, entry: *TestEntry) !bool {
     const segment = detectSegmentInName(entry.name);
     entry.name = try alignTestName(allocator, entry.name);
-    const segment_val = segment orelse return;
+    if (hasSegmentInName(entry.name)) return false;
+
+    const segment_val = segment orelse return true;
 
     var parser_ctx = parser_root.init(allocator, null);
     const inst = try parser_root.parseInstruction(&parser_ctx, entry.name);
 
-    const mem = findMemoryOperand(inst) orelse return;
+    const mem = findMemoryOperand(inst) orelse return true;
     const flat = flatEffectiveAddr(mem, entry.initial.regs);
     const segmented = flat +% segmentBase(entry.initial.regs, segment_val);
     const width: usize = if (mem.ptr_type == .word_ptr) 2 else 1;
 
     remapOperandRam(&entry.initial, segmented, flat, width);
     remapOperandRam(&entry.final, segmented, flat, width);
+    return true;
 }
 
 test "detect segment in memory operand" {
     try testing.expectEqual(Segment.ss, detectSegmentInName("add byte [ss:bp+si+5AFBh], al").?);
     try testing.expectEqual(Segment.ds, detectSegmentInName("mov word [ds:bx], ax").?);
     try testing.expect(detectSegmentInName("mov ax, bx") == null);
+}
+
+test "hasSegmentInName bounded matching" {
+    try testing.expect(hasSegmentInName("add byte [ds:bx], ah"));
+    try testing.expect(hasSegmentInName("mov word [es:di], ax"));
+    try testing.expect(!hasSegmentInName("mov ax, bx"));
+    try testing.expect(!hasSegmentInName("add [byte ptr bx], cl"));
+    try testing.expect(!hasSegmentInName("andes"));
+    try testing.expect(!hasSegmentInName("bss"));
 }
