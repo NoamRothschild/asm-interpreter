@@ -38,6 +38,7 @@ pub const TestEntry = struct {
 pub const TestJson = []TestEntry;
 
 const flatten = @import("flatten.zig");
+const log = @import("log.zig");
 
 pub fn fromFilename(allocator: std.mem.Allocator, name: []const u8) !TestJson {
     const path = try std.fmt.allocPrint(allocator, "test_suite/v1/{s}.json.gz", .{name});
@@ -59,7 +60,7 @@ pub fn fromFilename(allocator: std.mem.Allocator, name: []const u8) !TestJson {
     for (parsed) |*entry| {
         const keep = flatten.flattenTestEntry(allocator, entry) catch |err| {
             if (err == error.UnknownInstruction) {
-                std.log.warn("skipping suite set: got UnknownInstruction on `{s}` (assuming unsupported)", .{entry.name});
+                log.skip("skipping suite set: got UnknownInstruction on `{s}` (assuming unsupported)", .{entry.name});
                 return error.Abort;
             }
             return err;

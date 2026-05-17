@@ -6,6 +6,7 @@ const executor = @import("../CPU/executor.zig");
 const parser_root = @import("../parser/root.zig");
 const parser = @import("parser.zig");
 const context = @import("context.zig");
+const log = @import("log.zig");
 
 pub const max_detail_failures = 50;
 
@@ -23,11 +24,11 @@ pub fn runEntry(entry: parser.TestEntry, stats: *RunStats) error{Abort}!void {
     var parser_ctx = parser_root.init(entry_arena.allocator(), null);
     const instruction = parser_root.parseInstruction(&parser_ctx, entry.name) catch |err| {
         if (err == error.UnknownInstruction) {
-            std.log.warn("skipping suite set: got UnknownInstruction on `{s}` (assuming unsupported)", .{entry.name});
+            log.skip("skipping suite set: got UnknownInstruction on `{s}` (assuming unsupported)", .{entry.name});
             return error.Abort;
         }
 
-        std.log.warn("parse failed for '{s}' (#{d}): {s}", .{ entry.name, entry.test_num, @errorName(err) });
+        log.skip("parse failed for '{s}' (#{d}): {s}", .{ entry.name, entry.test_num, @errorName(err) });
         stats.skipped_parse += 1;
         return;
     };
@@ -42,7 +43,7 @@ pub fn runEntry(entry: parser.TestEntry, stats: *RunStats) error{Abort}!void {
     context.applyInitial(&ctx, entry.initial);
 
     executor.executeInstruction(&ctx) catch |err| {
-        std.log.warn("execute failed for '{s}' (#{d}): {s}", .{ entry.name, entry.test_num, @errorName(err) });
+        log.fail("execute failed for '{s}' (#{d}): {s}", .{ entry.name, entry.test_num, @errorName(err) });
         stats.skipped_exec += 1;
         return;
     };
@@ -54,7 +55,7 @@ pub fn runEntry(entry: parser.TestEntry, stats: *RunStats) error{Abort}!void {
             var buf: [256]u8 = undefined;
             var fbs = std.io.fixedBufferStream(&buf);
             context.printMismatch(fbs.writer(), mismatch) catch {};
-            std.debug.print("mismatch for '{s}' (#{d}): {s}\n", .{ entry.name, entry.test_num, fbs.getWritten() });
+            log.fail("mismatch for '{s}' (#{d}): {s}", .{ entry.name, entry.test_num, fbs.getWritten() });
         }
 
         return;
