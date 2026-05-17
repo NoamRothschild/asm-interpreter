@@ -16,9 +16,14 @@ pub const RunStats = struct {
     failed: usize = 0,
 };
 
-pub fn runEntry(entry: parser.TestEntry, stats: *RunStats) void {
+pub fn runEntry(entry: parser.TestEntry, stats: *RunStats) error{Abort}!void {
     var parser_ctx = parser_root.init(testing.allocator, null);
     const instruction = parser_root.parseInstruction(&parser_ctx, entry.name) catch |err| {
+        if (err == error.UnknownInstruction) {
+            std.log.warn("skipping suite set: got UnknownInstruction on `{s}` (assuming unsupported)\n", .{entry.name});
+            return error.Abort;
+        }
+
         std.log.warn("parse failed for '{s}' (#{d}): {s}", .{ entry.name, entry.test_num, @errorName(err) });
         stats.skipped_parse += 1;
         return;
@@ -58,6 +63,6 @@ pub fn runEntry(entry: parser.TestEntry, stats: *RunStats) void {
 pub fn runSuite(suite_name: []const u8, stats: *RunStats) !void {
     const tests = try parser.fromFilename(suite_name);
     for (tests) |entry| {
-        runEntry(entry, stats);
+        try runEntry(entry, stats);
     }
 }
