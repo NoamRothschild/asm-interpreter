@@ -61,7 +61,10 @@ pub fn runEntry(entry: parser.TestEntry, stats: *RunStats) error{Abort}!void {
 }
 
 pub fn runSuite(suite_name: []const u8, stats: *RunStats) !void {
-    const tests = try parser.fromFilename(suite_name);
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const tests = try parser.fromFilename(arena.allocator(), suite_name);
     for (tests) |entry| {
         try runEntry(entry, stats);
     }

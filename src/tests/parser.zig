@@ -39,9 +39,7 @@ pub const TestJson = []TestEntry;
 
 const flatten = @import("flatten.zig");
 
-pub fn fromFilename(name: []const u8) !TestJson {
-    const allocator = std.heap.page_allocator;
-
+pub fn fromFilename(allocator: std.mem.Allocator, name: []const u8) !TestJson {
     const path = try std.fmt.allocPrint(allocator, "test_suite/v1/{s}.json.gz", .{name});
     defer allocator.free(path);
 
@@ -65,7 +63,7 @@ pub fn fromFilename(name: []const u8) !TestJson {
 
 test "fromFilename loads and aligns instruction names" {
     const testing = std.testing;
-    const tests = try fromFilename("00");
+    const tests = try fromFilename(testing.allocator, "00");
     try testing.expect(tests.len > 0);
 
     for (tests) |entry| {
