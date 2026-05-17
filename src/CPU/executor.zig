@@ -35,7 +35,7 @@ pub fn executeInstruction(ctx: *Context) ExecError!void {
                 ._16bit, .unknown => executeUnary16(ctx, inst.inst, lhs),
             }
         },
-        .jmp, .je, .jne, .jg, .jl, .ja, .jb, .jge, .jle, .jae, .jbe, .jc, .jnc, .jz, .jnz, .jcxz, .jnbe, .jnae => {
+        .jmp, .je, .jne, .jg, .jl, .ja, .jb, .jge, .jle, .jae, .jbe, .jc, .jnc, .jz, .jnz, .jnle, .jnge, .jnl, .jng, .jcxz, .jnbe, .jnae => {
             if (shouldJump(ctx, inst.inst)) {
                 const target_addr = valueOf(lhs, ctx);
                 ctx.*.ip = target_addr;
@@ -832,4 +832,13 @@ test "executor jumps" {
     ctx.flags.c = false;
     try executeInstruction(&ctx);
     try testing.expectEqual(@as(usize, 2), ctx.ip);
+
+    resetCtx(&ctx);
+    const inst4 = try parseInst("jnle FFDDh");
+    ctx.instructions = &[_]parser_root.Instruction{inst4};
+    ctx.flags.z = false;
+    ctx.flags.s = false;
+    ctx.flags.o = false;
+    try executeInstruction(&ctx);
+    try testing.expectEqual(@as(usize, 0xFFDD), ctx.ip);
 }

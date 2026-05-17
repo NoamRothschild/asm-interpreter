@@ -56,7 +56,13 @@ pub fn fromFilename(allocator: std.mem.Allocator, name: []const u8) !TestJson {
 
     const tests = try std.json.parseFromSliceLeaky(TestJson, allocator, json_text, .{});
     for (tests) |*entry| {
-        try flatten.flattenTestEntry(allocator, entry);
+        flatten.flattenTestEntry(allocator, entry) catch |err| {
+            if (err == error.UnknownInstruction) {
+                std.log.warn("skipping suite set: got UnknownInstruction on `{s}` (assuming unsupported)", .{entry.name});
+                return error.Abort;
+            }
+            return err;
+        };
     }
     return tests;
 }

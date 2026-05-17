@@ -23,7 +23,7 @@ pub fn runEntry(entry: parser.TestEntry, stats: *RunStats) error{Abort}!void {
     var parser_ctx = parser_root.init(entry_arena.allocator(), null);
     const instruction = parser_root.parseInstruction(&parser_ctx, entry.name) catch |err| {
         if (err == error.UnknownInstruction) {
-            std.log.warn("skipping suite set: got UnknownInstruction on `{s}` (assuming unsupported)\n", .{entry.name});
+            std.log.warn("skipping suite set: got UnknownInstruction on `{s}` (assuming unsupported)", .{entry.name});
             return error.Abort;
         }
 
