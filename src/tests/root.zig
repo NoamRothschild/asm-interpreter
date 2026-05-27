@@ -1,3 +1,4 @@
+pub const config = @import("config.zig");
 pub const parser = @import("parser.zig");
 pub const context = @import("context.zig");
 pub const runner = @import("runner.zig");

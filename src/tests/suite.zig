@@ -15,7 +15,7 @@ fn run8086Suite(suite_number: []const u8) !void {
         error.Abort, error.FileNotFound => return,
         else => return err,
     };
-    const total = stats.passed + stats.skipped_parse + stats.skipped_exec + stats.failed;
+    const total = stats.passed + stats.skipped_parse + stats.skipped_exec + stats.skipped_flags + stats.failed;
     if (total == 0) {
         // we cancel tests if they use the segment registers (ex: mov ax, ds)
         log.skip("suite {s}: skipped entirely (unsupported segment operands)", .{suite_number});
@@ -26,7 +26,14 @@ fn run8086Suite(suite_number: []const u8) !void {
         log.skip("suite {s}: detailed logs shown for first {d} failures only", .{ suite_number, runner.max_detail_failures });
     }
 
-    log.ok("suite {s}: passed={d} parse_skipped={d} exec_skipped={d} failed={d}", .{ suite_number, stats.passed, stats.skipped_parse, stats.skipped_exec, stats.failed });
+    log.ok("suite {s}: passed={d} parse_skipped={d} exec_skipped={d} flags_skipped={d} failed={d}", .{
+        suite_number,
+        stats.passed,
+        stats.skipped_parse,
+        stats.skipped_exec,
+        stats.skipped_flags,
+        stats.failed,
+    });
     try testing.expect(stats.passed > 0);
     // Mismatches are logged; they indicate interpreter gaps, not harness bugs.
 }

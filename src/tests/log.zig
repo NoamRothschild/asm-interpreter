@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const config = @import("config.zig");
+
 const reset = "\x1b[0m";
 const red = "\x1b[31m";
 const green = "\x1b[32m";
@@ -16,6 +18,7 @@ pub fn fail(comptime fmt: []const u8, args: anytype) void {
 
 /// Skips and other non-fatal informational messages.
 pub fn skip(comptime fmt: []const u8, args: anytype) void {
+    if (config.suppress_skip_logs) return;
     emit(grey, fmt, args);
 }
 

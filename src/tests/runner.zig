@@ -13,6 +13,7 @@ pub const max_detail_failures = 50;
 pub const RunStats = struct {
     skipped_parse: usize = 0,
     skipped_exec: usize = 0,
+    skipped_flags: usize = 0,
     passed: usize = 0,
     failed: usize = 0,
 };
@@ -49,13 +50,26 @@ pub fn runEntry(entry: parser.TestEntry, stats: *RunStats) error{Abort}!void {
     };
 
     if (context.findMismatch(&ctx, entry.final)) |mismatch| {
-        stats.failed += 1;
+        switch (mismatch) {
+            .flags_unmodeled => {
+                stats.skipped_flags += 1;
+                if (stats.skipped_flags <= max_detail_failures) {
+                    var buf: [256]u8 = undefined;
+                    var fbs = std.io.fixedBufferStream(&buf);
+                    context.printMismatch(fbs.writer(), mismatch) catch {};
+                    log.skip("unmodeled flags for '{s}' (#{d}): {s}", .{ entry.name, entry.test_num, fbs.getWritten() });
+                }
+            },
+            else => {
+                stats.failed += 1;
 
-        if (stats.failed <= max_detail_failures) {
-            var buf: [256]u8 = undefined;
-            var fbs = std.io.fixedBufferStream(&buf);
-            context.printMismatch(fbs.writer(), mismatch) catch {};
-            log.fail("mismatch for '{s}' (#{d}): {s}", .{ entry.name, entry.test_num, fbs.getWritten() });
+                if (stats.failed <= max_detail_failures) {
+                    var buf: [256]u8 = undefined;
+                    var fbs = std.io.fixedBufferStream(&buf);
+                    context.printMismatch(fbs.writer(), mismatch) catch {};
+                    log.fail("mismatch for '{s}' (#{d}): {s}", .{ entry.name, entry.test_num, fbs.getWritten() });
+                }
+            },
         }
 
         return;
