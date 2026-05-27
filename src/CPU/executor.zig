@@ -47,6 +47,14 @@ pub fn executeInstruction(ctx: *Context) ExecError!void {
             if (ctx.*.cx.getValue() != 0)
                 ctx.*.ip = lhs.imm -% 1;
         },
+        // 8086: shl/shr/sar/rol/... with one operand use implicit count of 1
+        .shl, .sal, .shr, .sar, .rol, .ror, .rcl, .rcr => {
+            if (inst.right_operand == null) {
+                executeUnaryShiftRotate(ctx, inst, lhs);
+            } else {
+                exit = false;
+            }
+        },
         else => exit = false,
     }
     if (exit) return;
@@ -55,6 +63,32 @@ pub fn executeInstruction(ctx: *Context) ExecError!void {
     switch (inst.indexing_mode) {
         ._8bit => executeBinary8(ctx, inst, lhs, rhs),
         ._16bit, .unknown => executeBinary16(ctx, inst, lhs, rhs),
+    }
+}
+
+fn executeUnaryShiftRotate(ctx: *Context, inst: Instruction, lhs: Operand) void {
+    const one: Operand = .{ .imm = 1 };
+    switch (inst.indexing_mode) {
+        ._8bit => switch (inst.inst) {
+            .shl, .sal => execShift8(ctx, lhs, one, .shl),
+            .shr => execShift8(ctx, lhs, one, .shr),
+            .sar => execShift8(ctx, lhs, one, .sar),
+            .rol => execRotate8(ctx, lhs, one, .rol),
+            .ror => execRotate8(ctx, lhs, one, .ror),
+            .rcl => execRotate8(ctx, lhs, one, .rcl),
+            .rcr => execRotate8(ctx, lhs, one, .rcr),
+            else => {},
+        },
+        ._16bit, .unknown => switch (inst.inst) {
+            .shl, .sal => execShift16(ctx, lhs, one, .shl),
+            .shr => execShift16(ctx, lhs, one, .shr),
+            .sar => execShift16(ctx, lhs, one, .sar),
+            .rol => execRotate16(ctx, lhs, one, .rol),
+            .ror => execRotate16(ctx, lhs, one, .ror),
+            .rcl => execRotate16(ctx, lhs, one, .rcl),
+            .rcr => execRotate16(ctx, lhs, one, .rcr),
+            else => {},
+        },
     }
 }
 
@@ -312,82 +346,130 @@ fn setSubFlags16(flags: *FlagsRegister, lval: u16, rval: u16, res: u16) void {
 
 const ShiftKind = enum { shl, shr, sar };
 
-fn execShift8(ctx: *Context, lhs: Operand, rhs: Operand, kind: ShiftKind) void {
-    const lval = byteVal(lhs, ctx);
-    const shift_count = @as(u4, @truncate(valueOf(rhs, ctx) & 0x1F));
-    const res: u8 = switch (kind) {
-        .shl => blk: {
-            var v: u8 = lval;
-            var i: u4 = 0;
-            while (i < shift_count) : (i += 1) {
-                ctx.flags.c = (v >> 7) != 0;
-                v <<= 1;
-            }
-            break :blk v;
-        },
-        .shr => blk: {
-            var v: u8 = lval;
-            var i: u4 = 0;
-            while (i < shift_count) : (i += 1) {
-                ctx.flags.c = (v & 1) != 0;
-                v >>= 1;
-            }
-            break :blk v;
-        },
-        .sar => blk: {
-            var v: i8 = @bitCast(lval);
-            var i: u4 = 0;
-            while (i < shift_count) : (i += 1) {
-                ctx.flags.c = (@as(u8, @bitCast(v)) & 1) != 0;
-                v >>= 1;
-            }
-            break :blk @as(u8, @bitCast(v));
-        },
-    };
-    store(ctx, lhs, res);
-    if (shift_count > 0) {
-        ctx.flags.z = res == 0;
-        ctx.flags.s = (res >> 7) != 0;
+const ShiftResult8 = struct { value: u8, cf: bool, of: bool };
+
+const ShiftResult16 = struct { value: u16, cf: bool, of: bool };
+
+fn shiftCount(rhs: Operand, ctx: *const Context) u8 {
+    return @truncate(valueOf(rhs, ctx));
+}
+
+fn shift8(lval: u8, count: u8, kind: ShiftKind) ShiftResult8 {
+    if (count > 8) {
+        const signed: i8 = @bitCast(lval);
+        return switch (kind) {
+            .shl, .shr => .{ .value = 0, .cf = false, .of = false },
+            .sar => .{
+                .value = if (signed < 0) 0xFF else 0x00,
+                .cf = signed < 0,
+                .of = false,
+            },
+        };
+    }
+
+    var v: u8 = lval;
+    var cf: bool = false;
+    var of: bool = false;
+    var i: u8 = 0;
+    while (i < count) : (i += 1) {
         switch (kind) {
-            .shl => ctx.flags.o = (shift_count == 1) and ((lval >> 7) != (res >> 7)),
-            .shr => ctx.flags.o = (shift_count == 1) and ((lval >> 7) != 0),
-            .sar => ctx.flags.o = false,
+            .shl => {
+                const old_msb = (v >> 7) != 0;
+                cf = old_msb;
+                v <<= 1;
+                of = old_msb != ((v >> 7) != 0);
+            },
+            .shr => {
+                cf = (v & 1) != 0;
+                const old_msb = (v >> 7) != 0;
+                v >>= 1;
+                of = old_msb != ((v >> 7) != 0);
+            },
+            .sar => {
+                var signed: i8 = @bitCast(v);
+                cf = (v & 1) != 0;
+                signed >>= 1;
+                v = @bitCast(signed);
+            },
         }
     }
+    return .{ .value = v, .cf = cf, .of = of };
+}
+
+fn shift16(lval: u16, count: u8, kind: ShiftKind) ShiftResult16 {
+    if (count > 16) {
+        const signed: i16 = @bitCast(lval);
+        return switch (kind) {
+            .shl, .shr => .{ .value = 0, .cf = false, .of = false },
+            .sar => .{
+                .value = if (signed < 0) 0xFFFF else 0x0000,
+                .cf = signed < 0,
+                .of = false,
+            },
+        };
+    }
+
+    var v: u16 = lval;
+    var cf: bool = false;
+    var of: bool = false;
+    var i: u8 = 0;
+    while (i < count) : (i += 1) {
+        switch (kind) {
+            .shl => {
+                const old_msb = (v >> 15) != 0;
+                cf = old_msb;
+                v <<= 1;
+                of = old_msb != ((v >> 15) != 0);
+            },
+            .shr => {
+                cf = (v & 1) != 0;
+                const old_msb = (v >> 15) != 0;
+                v >>= 1;
+                of = old_msb != ((v >> 15) != 0);
+            },
+            .sar => {
+                var signed: i16 = @bitCast(v);
+                cf = (v & 1) != 0;
+                signed >>= 1;
+                v = @bitCast(signed);
+            },
+        }
+    }
+    return .{ .value = v, .cf = cf, .of = of };
+}
+
+fn setShiftFlags8(flags: *FlagsRegister, res: u8, shifted: ShiftResult8) void {
+    flags.c = shifted.cf;
+    flags.z = res == 0;
+    flags.s = (res >> 7) != 0;
+    flags.o = shifted.of;
+}
+
+fn setShiftFlags16(flags: *FlagsRegister, res: u16, shifted: ShiftResult16) void {
+    flags.c = shifted.cf;
+    flags.z = res == 0;
+    flags.s = (res >> 15) != 0;
+    flags.o = shifted.of;
+}
+
+fn execShift8(ctx: *Context, lhs: Operand, rhs: Operand, kind: ShiftKind) void {
+    const count = shiftCount(rhs, ctx);
+    if (count == 0) return;
+
+    const lval = byteVal(lhs, ctx);
+    const shifted = shift8(lval, count, kind);
+    store(ctx, lhs, shifted.value);
+    setShiftFlags8(&ctx.flags, shifted.value, shifted);
 }
 
 fn execShift16(ctx: *Context, lhs: Operand, rhs: Operand, kind: ShiftKind) void {
+    const count = shiftCount(rhs, ctx);
+    if (count == 0) return;
+
     const lval = valueOf(lhs, ctx);
-    const shift_count = @as(u4, @truncate(valueOf(rhs, ctx) & 0xF));
-    const res: u16 = switch (kind) {
-        .shl => lval << shift_count,
-        .shr => lval >> shift_count,
-        .sar => @bitCast(@as(i16, @bitCast(lval)) >> shift_count),
-    };
-    store(ctx, lhs, res);
-    if (shift_count > 0) {
-        switch (kind) {
-            .shl => {
-                const rs: u4 = @as(u4, @truncate(15 - (shift_count - 1)));
-                ctx.flags.c = (lval >> rs) != 0;
-                ctx.flags.z = res == 0;
-                ctx.flags.s = (res >> 15) != 0;
-                ctx.flags.o = (shift_count == 1) and ((lval >> 15) != (res >> 15));
-            },
-            .shr => {
-                ctx.flags.c = (lval >> (shift_count - 1)) & 1 != 0;
-                ctx.flags.z = res == 0;
-                ctx.flags.s = (res >> 15) != 0;
-                ctx.flags.o = (shift_count == 1) and ((lval >> 15) != 0);
-            },
-            .sar => {
-                ctx.flags.c = (lval >> (shift_count - 1)) & 1 != 0;
-                ctx.flags.z = res == 0;
-                ctx.flags.s = (res >> 15) != 0;
-                ctx.flags.o = false;
-            },
-        }
-    }
+    const shifted = shift16(lval, count, kind);
+    store(ctx, lhs, shifted.value);
+    setShiftFlags16(&ctx.flags, shifted.value, shifted);
 }
 
 const RotateKind = enum { rol, ror, rcl, rcr };
@@ -757,6 +839,15 @@ test "executor shifts and rotates" {
     var ctx = initTestCtx();
 
     resetCtx(&ctx);
+    const inst0 = try parseInst("shl dh, cl");
+    ctx.instructions = &[_]parser_root.Instruction{inst0};
+    ctx.setRegister(registerFromString("dx").?, 0xd0ea);
+    ctx.setRegister(registerFromString("cx").?, 0x002e);
+    try executeInstruction(&ctx);
+    try testing.expectEqual(@as(u16, 0x00ea), ctx.getRegister(registerFromString("dx").?));
+    try testing.expect(ctx.flags.z);
+
+    resetCtx(&ctx);
     const inst1 = try parseInst("shl ax, 1");
     ctx.instructions = &[_]parser_root.Instruction{inst1};
     ctx.setRegister(registerFromString("ax").?, 0x8001);
@@ -832,6 +923,21 @@ test "executor jumps" {
     ctx.flags.c = false;
     try executeInstruction(&ctx);
     try testing.expectEqual(@as(usize, 2), ctx.ip);
+
+    resetCtx(&ctx);
+    const inst4a = try parseInst("shl ax");
+    ctx.instructions = &[_]parser_root.Instruction{inst4a};
+    ctx.setRegister(registerFromString("ax").?, 1);
+    try executeInstruction(&ctx);
+    try testing.expectEqual(@as(u16, 2), ctx.getRegister(registerFromString("ax").?));
+
+    resetCtx(&ctx);
+    const inst4b = try parseInst("shr [word ptr bx]");
+    ctx.instructions = &[_]parser_root.Instruction{inst4b};
+    ctx.setRegister(registerFromString("bx").?, 0x0100);
+    ctx.writeWord(0x0100, 4);
+    try executeInstruction(&ctx);
+    try testing.expectEqual(@as(u16, 2), ctx.readWord(0x0100));
 
     resetCtx(&ctx);
     const inst4 = try parseInst("jnle FFDDh");

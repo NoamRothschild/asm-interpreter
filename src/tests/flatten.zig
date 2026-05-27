@@ -84,6 +84,25 @@ pub fn alignTestName(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
     return try out.toOwnedSlice();
 }
 
+fn segmentBaseLinear(regs: Regs, segment: Segment) usize {
+    const raw: usize = switch (segment) {
+        .cs => regs.cs orelse 0,
+        .ds => regs.ds orelse 0,
+        .ss => regs.ss orelse 0,
+        .es => regs.es orelse 0,
+    };
+    return raw << 4;
+}
+
+fn hasPhantomRamAlias(state: CpuState, linear: usize, flat: u16) bool {
+    for (state.ram) |entry| {
+        const addr = entry[0];
+        if (addr > 0xFFFF and addr != linear and context.truncateAddr(addr) == flat)
+            return true;
+    }
+    return false;
+}
+
 fn segmentBase(regs: Regs, segment: Segment) u16 {
     const raw: usize = switch (segment) {
         .cs => regs.cs orelse 0,
@@ -160,6 +179,11 @@ pub fn flattenTestEntry(allocator: std.mem.Allocator, entry: *TestEntry) !bool {
 
     remapOperandRam(&entry.initial, segmented, flat, width);
     remapOperandRam(&entry.final, segmented, flat, width);
+
+    const linear = segmentBaseLinear(entry.initial.regs, segment_val) + flat;
+    if (hasPhantomRamAlias(entry.initial, linear, flat) or hasPhantomRamAlias(entry.final, linear, flat))
+        return false;
+
     return true;
 }
 

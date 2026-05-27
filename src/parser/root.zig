@@ -233,6 +233,15 @@ pub fn parseInstruction(parser: *@This(), inst_raw: []const u8) (ParseErrors || 
             }
             if (right_op) |_| return ParseErrors.InvalidExpression;
         },
+        .shl, .sal, .shr, .sar, .rol, .ror, .rcl, .rcr => {
+            if (left_op) |lop| {
+                switch (lop) {
+                    .imm => return ParseErrors.InvalidOperandType,
+                    else => {},
+                }
+            }
+            // right operand optional (implicit shift count of 1)
+        },
         else => {},
     }
 
