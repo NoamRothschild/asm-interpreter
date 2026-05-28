@@ -27,6 +27,15 @@ label_map: LabelMap,
 named_offsets: ?*const std.StringHashMap(usize),
 stderr: std.io.AnyWriter,
 parsing_succeeded: bool,
+/// counts user-mistakes based on their type
+mistakes: struct {
+    /// captures InvalidExpression, UnknownInstruction, InvalidOperandType
+    invalid_expr: usize = 0,
+    /// captures InvalidEffectiveAddress, MismatchingOperandSizes, TwoMemoryOperands, UnknownIndexingMode
+    invalid_indexing: usize = 0,
+    /// captures ImmediateOutOfRange, UnknownLabel, UnknownOffsetLabel
+    small_mistakes: usize = 0,
+} = .{},
 
 pub fn init(allocator: std.mem.Allocator, stderr: std.io.AnyWriter, named_offsets: ?*const std.StringHashMap(usize)) @This() {
     return @This(){
@@ -155,15 +164,34 @@ pub fn parse(parser: *@This(), raw_code: []const u8) (ParseErrors || error{OutOf
 }
 
 /// calls parseInstruction, but if got an err that is not OutOfMemory, log it into stderr instead of propegating it
+/// also updates `parser.mistakes` based on the err
 pub fn parseInstructionPreferLog(parser: *@This(), inst_raw: []const u8) error{OutOfMemory}!?Instruction {
-    return parseInstruction(parser, inst_raw) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => {
-            // if parsing fails continue trying to parse the next lines.
-            parser.parsing_succeeded = false;
-            parser.stderr.print("parsing failed on line {d}: {s}\nline: `{s}`\n\n", .{ parser.line, @errorName(err), parser.line_slice }) catch return error.OutOfMemory;
-            return null;
-        },
+    return parseInstruction(parser, inst_raw) catch |err| {
+        switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+
+            error.InvalidExpression,
+            error.UnknownInstruction,
+            error.InvalidOperandType,
+            => parser.mistakes.invalid_expr += 1,
+
+            error.InvalidEffectiveAddress,
+            error.MismatchingOperandSizes,
+            error.TwoMemoryOperands,
+            error.UnknownIndexingMode,
+            => parser.mistakes.invalid_indexing += 1,
+
+            error.ImmediateOutOfRange,
+            error.UnknownLabel,
+            error.UnknownOffsetLabel,
+            => parser.mistakes.small_mistakes += 1,
+
+            else => {},
+        }
+        // if parsing fails continue trying to parse the next lines.
+        parser.parsing_succeeded = false;
+        parser.stderr.print("parsing failed on line {d}: {s}\nline: `{s}`\n\n", .{ parser.line, @errorName(err), parser.line_slice }) catch return error.OutOfMemory;
+        return null;
     };
 }
 
@@ -205,7 +233,7 @@ pub fn parseInstruction(parser: *@This(), inst_raw: []const u8) (ParseErrors || 
     if (right_op != null and left_op != null and (left_op.? == .imm or left_op.? == .unverified_label))
         return ParseError.InvalidOperandType; // the dst operand cannot me immediate
     if ((left_op != null and left_op.? == .mem) and (right_op != null and right_op.? == .mem))
-        return ParseError.InvalidOperandType; // fixes double memory opcoodes
+        return ParseError.TwoMemoryOperands; // fixes double memory opcoodes
 
     const indexing_mode: IndexMode = blk: {
         if (left_index_mode != .unknown and right_index_mode != .unknown and left_index_mode != right_index_mode)

@@ -2,6 +2,7 @@ pub const ParseError = error{
     UnknownInstruction,
     MismatchingOperandSizes,
     InvalidOperandType,
+    TwoMemoryOperands,
     ImmediateOutOfRange,
     UnknownLabel,
     InvalidExpression,
