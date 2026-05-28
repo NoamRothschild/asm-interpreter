@@ -712,7 +712,7 @@ fn resetCtx(ctx: *Context) void {
 }
 
 fn parseInst(s: []const u8) !parser_root.Instruction {
-    var parser = parser_root.init(testing.allocator, null);
+    var parser = parser_root.init(testing.allocator, std.io.null_writer.any(), null);
     return try parser_root.parseInstruction(&parser, s);
 }
 

@@ -31,6 +31,7 @@ pub fn main() !void {
     var args_iterator = std.process.args();
     _ = args_iterator.next(); // skip program name
     const stdout = std.io.getStdOut();
+    const stderr = std.io.getStdErr();
     var ctx = std.mem.zeroes(Context);
 
     var gpa = std.heap.DebugAllocator(.{}){};
@@ -62,7 +63,7 @@ pub fn main() !void {
         @panic("not implemeted"); // TODO: implement
     } else if (arg_ctx.eql("-r") or arg_ctx.eql("--run")) {
         if (args_iterator.next()) |tested_file| {
-            var parser_ctx = parser.init(allocator, null);
+            var parser_ctx = parser.init(allocator, stderr.writer().any(), null);
             try runner.run_file(&parser_ctx, &ctx, tested_file);
             if (!silent.*) try stdout.writer().print("CPU Context: {}\n", .{ctx});
             return;
@@ -73,7 +74,7 @@ pub fn main() !void {
             _ = std.mem.replace(u8, code, "\\n", "\n", fixed_code);
             defer allocator.free(fixed_code);
 
-            var parser_ctx = parser.init(allocator, null);
+            var parser_ctx = parser.init(allocator, stderr.writer().any(), null);
             try runner.run(&parser_ctx, &ctx, fixed_code, null);
             if (!silent.*) try stdout.writer().print("CPU Context: {}\n", .{ctx});
             return;

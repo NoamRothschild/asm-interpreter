@@ -169,7 +169,7 @@ pub fn flattenTestEntry(allocator: std.mem.Allocator, entry: *TestEntry) !bool {
 
     const segment_val = segment orelse return true;
 
-    var parser_ctx = parser_root.init(allocator, null);
+    var parser_ctx = parser_root.init(allocator, std.io.null_writer.any(), null);
     const inst = try parser_root.parseInstruction(&parser_ctx, entry.name);
 
     const mem = findMemoryOperand(inst) orelse return true;

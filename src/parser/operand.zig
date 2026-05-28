@@ -5,6 +5,7 @@ const RegisterIdentifier = register.RegisterIdentifier;
 const IndexMode = @import("instruction.zig").IndexMode;
 const Context = @import("../CPU/context.zig").Context;
 const ParseError = @import("../errors.zig").ParseError;
+const ParserCtx = @import("root.zig");
 
 pub const Operand = union(enum) {
     imm: u16,
@@ -46,10 +47,10 @@ pub const OperandParseErrors = ParseError;
 /// returns `null` when raw_op.len == 0
 /// fails if an operand was found, but was unable to be diagnosed, or
 /// an error had occured while parsig after the operand type had been found.
-pub fn parseOperand(allocator: std.mem.Allocator, raw_op: []const u8, mode: *IndexMode, named_offsets: ?*const std.StringHashMap(usize)) (OperandParseErrors || error{OutOfMemory})!?Operand {
+pub fn parseOperand(ctx: *const ParserCtx, raw_op: []const u8, mode: *IndexMode) (OperandParseErrors || error{OutOfMemory})!?Operand {
     if (raw_op.len == 0) return null;
 
-    const might_offset = try parseOffset(raw_op, named_offsets);
+    const might_offset = try parseOffset(raw_op, ctx.named_offsets);
     if (might_offset) |imm| {
         return Operand{ .imm = imm };
     }
@@ -65,7 +66,7 @@ pub fn parseOperand(allocator: std.mem.Allocator, raw_op: []const u8, mode: *Ind
         return Operand{ .imm = imm };
     }
 
-    const might_mem_expr = try parseMemoryExpr(allocator, raw_op);
+    const might_mem_expr = try parseMemoryExpr(ctx.allocator, raw_op);
     if (might_mem_expr) |mem_expr| {
         if (mem_expr.ptr_type == .byte_ptr) {
             mode.* = ._8bit;
@@ -75,7 +76,7 @@ pub fn parseOperand(allocator: std.mem.Allocator, raw_op: []const u8, mode: *Ind
         return Operand{ .mem = mem_expr };
     }
 
-    return Operand{ .unverified_label = try allocator.dupe(u8, raw_op) };
+    return Operand{ .unverified_label = try ctx.allocator.dupe(u8, raw_op) };
 }
 
 fn parseOffset(raw_op: []const u8, named_offsets: ?*const std.StringHashMap(usize)) OperandParseErrors!?u16 {

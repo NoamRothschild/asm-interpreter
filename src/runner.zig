@@ -6,8 +6,7 @@ const Context = @import("CPU/context.zig").Context;
 
 pub fn run(parser_ctx: *parser, ctx: *Context, code: []const u8, timeout: ?usize) !void {
     parser_ctx.parse(code) catch |err| {
-        if (!module.silent)
-            std.log.warn("parser failed on line {d}!, error: {s}\nline:\n{s}", .{ parser_ctx.line, @errorName(err), parser_ctx.line_slice });
+        try parser_ctx.stderr.print("parsing failed on line {d}!, error: {s}\nline:\n{s}", .{ parser_ctx.line, @errorName(err), parser_ctx.line_slice });
         return err;
     };
     defer parser_ctx.deinit();

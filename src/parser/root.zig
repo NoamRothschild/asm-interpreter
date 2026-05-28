@@ -25,9 +25,10 @@ allocator: std.mem.Allocator,
 instructions: []Instruction,
 label_map: LabelMap,
 named_offsets: ?*const std.StringHashMap(usize),
-parsing_done: bool,
+stderr: std.io.AnyWriter,
+parsing_succeeded: bool,
 
-pub fn init(allocator: std.mem.Allocator, named_offsets: ?*const std.StringHashMap(usize)) @This() {
+pub fn init(allocator: std.mem.Allocator, stderr: std.io.AnyWriter, named_offsets: ?*const std.StringHashMap(usize)) @This() {
     return @This(){
         .line = 0,
         .allocator = allocator,
@@ -36,12 +37,13 @@ pub fn init(allocator: std.mem.Allocator, named_offsets: ?*const std.StringHashM
         .named_offsets = named_offsets,
         .pos_in_line = .inst,
         .line_slice = undefined,
-        .parsing_done = false,
+        .parsing_succeeded = false,
+        .stderr = stderr,
     };
 }
 
 pub fn deinit(self: *@This()) void {
-    if (!self.parsing_done) return;
+    if (!self.parsing_succeeded) return;
     self.allocator.free(self.instructions);
 
     var it = self.label_map.keyIterator();
@@ -54,8 +56,8 @@ pub fn deinit(self: *@This()) void {
 pub fn parse(parser: *@This(), raw_code: []const u8) (ParseErrors || error{OutOfMemory})!void {
     const allocator = parser.allocator;
     parser.label_map = LabelMap.init(allocator);
-    parser.parsing_done = true;
-    errdefer parser.parsing_done = false;
+    parser.parsing_succeeded = true;
+    errdefer parser.parsing_succeeded = false;
     var instructions = std.ArrayList(Instruction).init(allocator);
     defer instructions.deinit();
     errdefer {
@@ -97,8 +99,21 @@ pub fn parse(parser: *@This(), raw_code: []const u8) (ParseErrors || error{OutOf
 
             try parser.label_map.put(try allocator.dupe(u8, label_name), instructions.items.len);
 
-            if (followed_inst.len != 0)
-                try instructions.append(try parseInstruction(parser, followed_inst));
+            if (followed_inst.len != 0) {
+                const might_inst: ?Instruction = blk: {
+                    break :blk parseInstruction(parser, followed_inst) catch |err| switch (err) {
+                        error.OutOfMemory => return err,
+                        else => {
+                            // if parsing fails continue trying to parse the next lines.
+                            parser.parsing_succeeded = false;
+                            parser.stderr.print("parsing failed on line {d}: {s}\nline:\n{s}\n\n", .{ parser.line, @errorName(err), parser.line_slice }) catch return error.OutOfMemory;
+                            break :blk null;
+                        },
+                    };
+                };
+                if (might_inst) |inst|
+                    try instructions.append(inst);
+            }
         } else {
             var instruction: []u8 = @constCast(std.mem.trim(u8, left_trimmed, &std.ascii.whitespace));
             // if the line had a `:` but it was not meant to be a label,
@@ -147,8 +162,6 @@ pub fn parse(parser: *@This(), raw_code: []const u8) (ParseErrors || error{OutOf
 }
 
 pub fn parseInstruction(parser: *@This(), inst_raw: []const u8) (ParseErrors || error{OutOfMemory})!Instruction {
-    const allocator = parser.allocator;
-    const named_offsets = parser.named_offsets;
     const inst_type_end = (std.mem.indexOf(u8, inst_raw, " ") orelse inst_raw.len);
     const inst_str_type = inst_raw[0..inst_type_end];
     // std.debug.print("inst_type: {s}\n", .{inst_str_type});
@@ -177,9 +190,9 @@ pub fn parseInstruction(parser: *@This(), inst_raw: []const u8) (ParseErrors || 
     var right_index_mode: IndexMode = .unknown;
 
     parser.pos_in_line = .left_op;
-    var left_op = try operand.parseOperand(allocator, left_op_str, &left_index_mode, null);
+    var left_op = try operand.parseOperand(parser, left_op_str, &left_index_mode);
     parser.pos_in_line = .right_op;
-    var right_op = try operand.parseOperand(allocator, right_op_str, &right_index_mode, named_offsets);
+    var right_op = try operand.parseOperand(parser, right_op_str, &right_index_mode);
 
     if (right_op != null and left_op != null and (left_op.? == .imm or left_op.? == .unverified_label))
         return ParseError.InvalidOperandType; // the dst operand cannot me immediate
@@ -270,7 +283,7 @@ pub fn parseInstruction(parser: *@This(), inst_raw: []const u8) (ParseErrors || 
 }
 
 test "test parse instruction" {
-    var parser = init(testing.allocator, null);
+    var parser = init(testing.allocator, std.io.null_writer.any(), null);
 
     try testing.expectEqual(Instruction{
         .inst = .mov,

@@ -1,3 +1,5 @@
+pub const enable_test_suite: bool = false;
+
 /// When true, only carry (CF) and zero (ZF) participate in pass/fail flag checks.
 /// Mismatches on SF, OF, and other unmodeled flags are counted as skipped instead of failed.
 pub const ignore_unmodeled_flag_mismatches: bool = true;

@@ -12,6 +12,7 @@ pub fn main(config: anytype) !void {
 
     const stdin = std.io.getStdIn();
     const stdout = std.io.getStdOut();
+    const stderr = std.io.getStdErr();
     var ctx: Context = std.mem.zeroes(Context);
     var instruction: []const u8 = undefined;
     var running: bool = true;
@@ -38,7 +39,7 @@ pub fn main(config: anytype) !void {
             continue;
         }
 
-        var parser_ = parser.init(allocator, null);
+        var parser_ = parser.init(allocator, stderr.writer().any(), null);
         try inst_list.append(parser.parseInstruction(&parser_, instruction) catch |err| {
             if (!module.silent)
                 std.log.warn("Errored while parsing instruction \"{s}\"\n{s}", .{ instruction, @errorName(err) });

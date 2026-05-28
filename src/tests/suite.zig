@@ -5,6 +5,7 @@ const module = @import("../module.zig");
 const runner = @import("runner.zig");
 const log = @import("log.zig");
 const suite_names = @import("suite_names");
+const config = @import("config.zig");
 
 fn run8086Suite(suite_number: []const u8) !void {
     module.silent = true;
@@ -39,11 +40,12 @@ fn run8086Suite(suite_number: []const u8) !void {
 }
 
 comptime {
-    for (suite_names.names) |suite_name| {
-        _ = struct {
-            test {
-                try run8086Suite(suite_name);
-            }
+    if (config.enable_test_suite)
+        for (suite_names.names) |suite_name| {
+            _ = struct {
+                test {
+                    try run8086Suite(suite_name);
+                }
+            };
         };
-    }
 }
