@@ -100,17 +100,7 @@ pub fn parse(parser: *@This(), raw_code: []const u8) (ParseErrors || error{OutOf
             try parser.label_map.put(try allocator.dupe(u8, label_name), instructions.items.len);
 
             if (followed_inst.len != 0) {
-                const might_inst: ?Instruction = blk: {
-                    break :blk parseInstruction(parser, followed_inst) catch |err| switch (err) {
-                        error.OutOfMemory => return err,
-                        else => {
-                            // if parsing fails continue trying to parse the next lines.
-                            parser.parsing_succeeded = false;
-                            parser.stderr.print("parsing failed on line {d}: {s}\nline:\n{s}\n\n", .{ parser.line, @errorName(err), parser.line_slice }) catch return error.OutOfMemory;
-                            break :blk null;
-                        },
-                    };
-                };
+                const might_inst: ?Instruction = try parseInstructionPreferLog(parser, followed_inst);
                 if (might_inst) |inst|
                     try instructions.append(inst);
             }
@@ -131,7 +121,9 @@ pub fn parse(parser: *@This(), raw_code: []const u8) (ParseErrors || error{OutOf
                 if (should_free) allocator.free(instruction);
             }
             if (instruction.len == 0) continue;
-            try instructions.append(try parseInstruction(parser, instruction));
+            const might_inst: ?Instruction = try parseInstructionPreferLog(parser, instruction);
+            if (might_inst) |inst|
+                try instructions.append(inst);
         }
     }
     try instructions.append(try parseInstruction(parser, "hlt"));
@@ -142,15 +134,14 @@ pub fn parse(parser: *@This(), raw_code: []const u8) (ParseErrors || error{OutOf
 
     // TODO: must be cleaned up. perhaps moving some of the code here to label.zig would be fitting.
     var has_invalid_label: bool = false;
-    for (parser.instructions) |*inst| {
+    for (parser.instructions, 1..) |*inst, inst_line| {
         inline for (&[_]*?operand.Operand{ &inst.left_operand, &inst.right_operand }) |maybe_operand| {
             if (maybe_operand.* != null and maybe_operand.*.? == .unverified_label) {
                 const unverified_label = maybe_operand.*.?.unverified_label;
                 if (parser.label_map.get(unverified_label)) |line| {
                     maybe_operand.* = .{ .imm = @truncate(line) };
                 } else {
-                    if (!module.silent)
-                        std.log.err("Tried to access an unknown label: {s}\n", .{unverified_label});
+                    parser.stderr.print("unknown label on line {d}. label: {s}\n", .{ inst_line, unverified_label }) catch return error.OutOfMemory;
                     has_invalid_label = true;
                 }
                 allocator.free(unverified_label);
@@ -159,6 +150,21 @@ pub fn parse(parser: *@This(), raw_code: []const u8) (ParseErrors || error{OutOf
     }
     if (has_invalid_label)
         return ParseErrors.UnknownLabel;
+    if (!parser.parsing_succeeded)
+        return error.ParsingNotCompleted;
+}
+
+/// calls parseInstruction, but if got an err that is not OutOfMemory, log it into stderr instead of propegating it
+pub fn parseInstructionPreferLog(parser: *@This(), inst_raw: []const u8) error{OutOfMemory}!?Instruction {
+    return parseInstruction(parser, inst_raw) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => {
+            // if parsing fails continue trying to parse the next lines.
+            parser.parsing_succeeded = false;
+            parser.stderr.print("parsing failed on line {d}: {s}\nline: `{s}`\n\n", .{ parser.line, @errorName(err), parser.line_slice }) catch return error.OutOfMemory;
+            return null;
+        },
+    };
 }
 
 pub fn parseInstruction(parser: *@This(), inst_raw: []const u8) (ParseErrors || error{OutOfMemory})!Instruction {
@@ -191,8 +197,10 @@ pub fn parseInstruction(parser: *@This(), inst_raw: []const u8) (ParseErrors || 
 
     parser.pos_in_line = .left_op;
     var left_op = try operand.parseOperand(parser, left_op_str, &left_index_mode);
+    errdefer cleanupTemporaryOperand(parser.allocator, &left_op);
     parser.pos_in_line = .right_op;
     var right_op = try operand.parseOperand(parser, right_op_str, &right_index_mode);
+    errdefer cleanupTemporaryOperand(parser.allocator, &right_op);
 
     if (right_op != null and left_op != null and (left_op.? == .imm or left_op.? == .unverified_label))
         return ParseError.InvalidOperandType; // the dst operand cannot me immediate
@@ -280,6 +288,15 @@ pub fn parseInstruction(parser: *@This(), inst_raw: []const u8) (ParseErrors || 
         .right_operand = right_op,
         .indexing_mode = indexing_mode,
     };
+}
+
+fn cleanupTemporaryOperand(allocator: std.mem.Allocator, maybe_operand: *?Operand) void {
+    if (maybe_operand.*) |op| {
+        if (op == .unverified_label) {
+            allocator.free(op.unverified_label);
+            maybe_operand.* = null;
+        }
+    }
 }
 
 test "test parse instruction" {

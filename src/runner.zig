@@ -5,10 +5,7 @@ const executor = @import("CPU/executor.zig");
 const Context = @import("CPU/context.zig").Context;
 
 pub fn run(parser_ctx: *parser, ctx: *Context, code: []const u8, timeout: ?usize) !void {
-    parser_ctx.parse(code) catch |err| {
-        try parser_ctx.stderr.print("parsing failed on line {d}!, error: {s}\nline:\n{s}", .{ parser_ctx.line, @errorName(err), parser_ctx.line_slice });
-        return err;
-    };
+    try parser_ctx.parse(code);
     defer parser_ctx.deinit();
     ctx.instructions = parser_ctx.instructions;
 
