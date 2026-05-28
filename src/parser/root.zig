@@ -151,7 +151,7 @@ pub fn parse(parser: *@This(), raw_code: []const u8) (ParseErrors || error{OutOf
     if (has_invalid_label)
         return ParseErrors.UnknownLabel;
     if (!parser.parsing_succeeded)
-        return error.ParsingNotCompleted;
+        return error.ParsingIncomplete;
 }
 
 /// calls parseInstruction, but if got an err that is not OutOfMemory, log it into stderr instead of propegating it

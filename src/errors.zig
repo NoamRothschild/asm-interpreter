@@ -8,7 +8,7 @@ pub const ParseError = error{
     InvalidEffectiveAddress,
     UnknownIndexingMode,
     UnknownOffsetLabel,
-    ParsingNotCompleted,
+    ParsingIncomplete,
 };
 
 pub const ExecError = error{

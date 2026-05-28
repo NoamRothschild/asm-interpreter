@@ -5,7 +5,11 @@ const executor = @import("CPU/executor.zig");
 const Context = @import("CPU/context.zig").Context;
 
 pub fn run(parser_ctx: *parser, ctx: *Context, code: []const u8, timeout: ?usize) !void {
-    try parser_ctx.parse(code);
+    parser_ctx.parse(code) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.ParsingIncomplete,
+    };
+
     defer parser_ctx.deinit();
     ctx.instructions = parser_ctx.instructions;
 
