@@ -354,6 +354,10 @@ fn shiftCount(rhs: Operand, ctx: *const Context) u8 {
     return @truncate(valueOf(rhs, ctx));
 }
 
+fn rotateCount(rhs: Operand, ctx: *const Context) u8 {
+    return shiftCount(rhs, ctx);
+}
+
 fn shift8(lval: u8, count: u8, kind: ShiftKind) ShiftResult8 {
     if (count > 8) {
         const signed: i8 = @bitCast(lval);
@@ -476,12 +480,22 @@ const RotateKind = enum { rol, ror, rcl, rcr };
 
 fn execRotate8(ctx: *Context, lhs: Operand, rhs: Operand, kind: RotateKind) void {
     const lval = byteVal(lhs, ctx);
-    const shift_count = @as(u5, @truncate(valueOf(rhs, ctx) & 0x1F));
+    const shift_count = rotateCount(rhs, ctx);
     if (shift_count == 0) return;
 
     const res: u8 = switch (kind) {
-        .rol => rol8(lval, shift_count),
-        .ror => ror8(lval, shift_count),
+        .rol => blk: {
+            const r = rol8(lval, shift_count);
+            ctx.flags.c = r.carry;
+            if (shift_count == 1) ctx.flags.o = ((r.value >> 7) & 1) != @intFromBool(r.carry);
+            break :blk r.value;
+        },
+        .ror => blk: {
+            const r = ror8(lval, shift_count);
+            ctx.flags.c = r.carry;
+            if (shift_count == 1) ctx.flags.o = ((r.value >> 7) & 1) != @intFromBool(r.carry);
+            break :blk r.value;
+        },
         .rcl => blk: {
             const r = rcl8(lval, shift_count, ctx.flags.c);
             ctx.flags.c = r.carry;
@@ -496,30 +510,26 @@ fn execRotate8(ctx: *Context, lhs: Operand, rhs: Operand, kind: RotateKind) void
         },
     };
     store(ctx, lhs, res);
-    switch (kind) {
-        .rol, .ror => {
-            const eff = shift_count % 8;
-            if (eff == 0) return;
-            const c_from: u3 = switch (kind) {
-                .rol => if (eff == 0) 7 else @as(u3, @truncate(7 - (eff - 1))),
-                .ror => if (eff == 0) 0 else @as(u3, @truncate(eff - 1)),
-                else => unreachable,
-            };
-            ctx.flags.c = ((lval >> c_from) & 1) != 0;
-            if (shift_count == 1) ctx.flags.o = ((res >> 7) & 1) != @intFromBool(ctx.flags.c);
-        },
-        .rcl, .rcr => {},
-    }
 }
 
 fn execRotate16(ctx: *Context, lhs: Operand, rhs: Operand, kind: RotateKind) void {
     const lval = valueOf(lhs, ctx);
-    const shift_count = @as(u5, @truncate(valueOf(rhs, ctx) & 0x1F));
+    const shift_count = rotateCount(rhs, ctx);
     if (shift_count == 0) return;
 
     const res: u16 = switch (kind) {
-        .rol => rol16(lval, shift_count),
-        .ror => ror16(lval, shift_count),
+        .rol => blk: {
+            const r = rol16(lval, shift_count);
+            ctx.flags.c = r.carry;
+            if (shift_count == 1) ctx.flags.o = ((r.value >> 15) & 1) != @intFromBool(r.carry);
+            break :blk r.value;
+        },
+        .ror => blk: {
+            const r = ror16(lval, shift_count);
+            ctx.flags.c = r.carry;
+            if (shift_count == 1) ctx.flags.o = ((r.value >> 15) & 1) != @intFromBool(r.carry);
+            break :blk r.value;
+        },
         .rcl => blk: {
             const r = rcl16(lval, shift_count, ctx.flags.c);
             ctx.flags.c = r.carry;
@@ -534,42 +544,37 @@ fn execRotate16(ctx: *Context, lhs: Operand, rhs: Operand, kind: RotateKind) voi
         },
     };
     store(ctx, lhs, res);
-    switch (kind) {
-        .rol, .ror => {
-            const eff: u4 = @truncate(shift_count % 16);
-            const c_from: u4 = switch (kind) {
-                .rol => if (eff == 0) 15 else @as(u4, @truncate(15 - (eff - 1))),
-                .ror => if (eff == 0) 0 else @as(u4, @truncate(eff - 1)),
-                else => unreachable,
-            };
-            ctx.flags.c = ((lval >> c_from) & 1) != 0;
-            if (shift_count == 1) ctx.flags.o = ((res >> 15) & 1) != @intFromBool(ctx.flags.c);
-        },
-        .rcl, .rcr => {},
+}
+
+fn rol8(value: u8, count: u8) RotateResult8 {
+    var result = value;
+    var c = false;
+    var i: u8 = 0;
+    while (i < count) : (i += 1) {
+        c = (result >> 7) != 0;
+        result = (result << 1) | @as(u8, @intFromBool(c));
     }
+    return .{ .value = result, .carry = c };
 }
 
-fn rol8(value: u8, count: u5) u8 {
-    const sc: u3 = @truncate(count % 8);
-    if (sc == 0) return value;
-    const right: u3 = @truncate(7 - (sc - 1));
-    return (value << sc) | (value >> right);
-}
-
-fn ror8(value: u8, count: u5) u8 {
-    const sc: u3 = @truncate(count % 8);
-    if (sc == 0) return value;
-    const left: u3 = @truncate(7 - (sc - 1));
-    return (value >> sc) | (value << left);
+fn ror8(value: u8, count: u8) RotateResult8 {
+    var result = value;
+    var c = false;
+    var i: u8 = 0;
+    while (i < count) : (i += 1) {
+        c = (result & 1) != 0;
+        result = (result >> 1) | (@as(u8, @intFromBool(c)) << 7);
+    }
+    return .{ .value = result, .carry = c };
 }
 
 const RotateResult8 = struct { value: u8, carry: bool };
 
-fn rcl8(value: u8, count: u5, carry: bool) RotateResult8 {
+fn rcl8(value: u8, count: u8, carry: bool) RotateResult8 {
     var result = value;
     var c = carry;
     const shift_count = count % 9;
-    var i: u5 = 0;
+    var i: u8 = 0;
     while (i < shift_count) : (i += 1) {
         const new_carry = (result >> 7) != 0;
         result = (result << 1) | @as(u8, @intFromBool(c));
@@ -578,11 +583,11 @@ fn rcl8(value: u8, count: u5, carry: bool) RotateResult8 {
     return .{ .value = result, .carry = c };
 }
 
-fn rcr8(value: u8, count: u5, carry: bool) RotateResult8 {
+fn rcr8(value: u8, count: u8, carry: bool) RotateResult8 {
     var result = value;
     var c = carry;
     const shift_count = count % 9;
-    var i: u5 = 0;
+    var i: u8 = 0;
     while (i < shift_count) : (i += 1) {
         const new_carry = (result & 1) != 0;
         result = (result >> 1) | (@as(u8, @intFromBool(c)) << 7);
@@ -591,30 +596,36 @@ fn rcr8(value: u8, count: u5, carry: bool) RotateResult8 {
     return .{ .value = result, .carry = c };
 }
 
-fn rol16(value: u16, count: u5) u16 {
-    if (count == 0) return value;
-    const sc: u4 = @truncate(count % 16);
-    if (sc == 0) return value;
-    const right: u4 = @truncate(15 - (sc - 1));
-    return (value << sc) | (value >> right);
+fn rol16(value: u16, count: u8) RotateResult16 {
+    var result = value;
+    var c = false;
+    var i: u8 = 0;
+    while (i < count) : (i += 1) {
+        c = (result >> 15) != 0;
+        result = (result << 1) | @as(u16, @intFromBool(c));
+    }
+    return .{ .value = result, .carry = c };
 }
 
-fn ror16(value: u16, count: u5) u16 {
-    if (count == 0) return value;
-    const sc: u4 = @truncate(count % 16);
-    if (sc == 0) return value;
-    const left: u4 = @truncate(15 - (sc - 1));
-    return (value >> sc) | (value << left);
+fn ror16(value: u16, count: u8) RotateResult16 {
+    var result = value;
+    var c = false;
+    var i: u8 = 0;
+    while (i < count) : (i += 1) {
+        c = (result & 1) != 0;
+        result = (result >> 1) | (@as(u16, @intFromBool(c)) << 15);
+    }
+    return .{ .value = result, .carry = c };
 }
 
 const RotateResult16 = struct { value: u16, carry: bool };
 
-fn rcl16(value: u16, count: u5, carry: bool) RotateResult16 {
+fn rcl16(value: u16, count: u8, carry: bool) RotateResult16 {
     if (count == 0) return .{ .value = value, .carry = carry };
     var result = value;
     var c = carry;
     const shift_count = count % 17;
-    var i: u5 = 0;
+    var i: u8 = 0;
     while (i < shift_count) : (i += 1) {
         const new_carry = (result >> 15) != 0;
         result = (result << 1) | (@as(u16, @intFromBool(c)));
@@ -623,12 +634,12 @@ fn rcl16(value: u16, count: u5, carry: bool) RotateResult16 {
     return .{ .value = result, .carry = c };
 }
 
-fn rcr16(value: u16, count: u5, carry: bool) RotateResult16 {
+fn rcr16(value: u16, count: u8, carry: bool) RotateResult16 {
     if (count == 0) return .{ .value = value, .carry = carry };
     var result = value;
     var c = carry;
     const shift_count = count % 17;
-    var i: u5 = 0;
+    var i: u8 = 0;
     while (i < shift_count) : (i += 1) {
         const new_carry = (result & 1) != 0;
         result = (result >> 1) | (@as(u16, @intFromBool(c)) << 15);
@@ -947,4 +958,140 @@ test "executor jumps" {
     ctx.flags.o = false;
     try executeInstruction(&ctx);
     try testing.expectEqual(@as(usize, 0xFFDD), ctx.ip);
+}
+
+test "rcr by cl regression D2.3 #50 #51" {
+    var ctx = initTestCtx();
+
+    resetCtx(&ctx);
+    const inst50 = try parseInst("rcr cl, cl");
+    ctx.instructions = &[_]parser_root.Instruction{inst50};
+    ctx.setRegister(registerFromString("cx").?, 0x3c22);
+    ctx.flags.c = false;
+    ctx.flags.z = true;
+    try executeInstruction(&ctx);
+    try testing.expectEqual(@as(u16, 0x3c88), ctx.getRegister(registerFromString("cx").?));
+
+    resetCtx(&ctx);
+    const inst51 = try parseInst("rcr ah, cl");
+    ctx.instructions = &[_]parser_root.Instruction{inst51};
+    ctx.setRegister(registerFromString("ax").?, 0xb858);
+    ctx.setRegister(registerFromString("cx").?, 0xe02c);
+    ctx.flags.c = true;
+    try executeInstruction(&ctx);
+    try testing.expectEqual(@as(u16, 0x7158), ctx.getRegister(registerFromString("ax").?));
+}
+
+test "ror by cl keeps C/Z behavior for nonzero counts" {
+    var ctx = initTestCtx();
+
+    const Case = struct {
+        name: []const u8,
+        ax: u16 = 0,
+        bx: u16 = 0,
+        cx: u16 = 0,
+        bp: u16 = 0,
+        di: u16 = 0,
+        mem_addr: ?u16 = null,
+        mem_value: u8 = 0,
+        init_c: bool,
+        init_z: bool,
+        expected_c: bool,
+        expected_z: bool,
+    };
+
+    const cases = [_]Case{
+        .{
+            .name = "ror al, cl",
+            .ax = 0x7760,
+            .cx = 0xf908,
+            .init_c = true,
+            .init_z = false,
+            .expected_c = false,
+            .expected_z = false,
+        },
+        .{
+            .name = "ror [byte ptr bx-7Fh], cl",
+            .bx = 0x4be4,
+            .cx = 0x5b08,
+            .mem_addr = 0x4b65,
+            .mem_value = 0x2f,
+            .init_c = true,
+            .init_z = false,
+            .expected_c = false,
+            .expected_z = false,
+        },
+        .{
+            .name = "ror [byte ptr bx+di+A4Fh], cl",
+            .bx = 0x2b23,
+            .di = 0x32f9,
+            .cx = 0xb628,
+            .mem_addr = 0x6881,
+            .mem_value = 0xc2,
+            .init_c = true,
+            .init_z = false,
+            .expected_c = false,
+            .expected_z = false,
+        },
+        .{
+            .name = "ror [byte ptr B67h], cl",
+            .cx = 0x5e20,
+            .mem_addr = 0x0b67,
+            .mem_value = 0x66,
+            .init_c = true,
+            .init_z = true,
+            .expected_c = false,
+            .expected_z = true,
+        },
+        .{
+            .name = "ror [byte ptr bx+di-13h], cl",
+            .bx = 0x83e4,
+            .di = 0x4a89,
+            .cx = 0xf908,
+            .mem_addr = 0xce5a,
+            .mem_value = 0xa3,
+            .init_c = false,
+            .init_z = true,
+            .expected_c = true,
+            .expected_z = true,
+        },
+        .{
+            .name = "ror [byte ptr bp+di], cl",
+            .bp = 0xbc59,
+            .di = 0x16f9,
+            .cx = 0xcb20,
+            .mem_addr = 0xd352,
+            .mem_value = 0xa4,
+            .init_c = false,
+            .init_z = false,
+            .expected_c = true,
+            .expected_z = false,
+        },
+        .{
+            .name = "ror ch, cl",
+            .cx = 0x9d08,
+            .init_c = false,
+            .init_z = true,
+            .expected_c = true,
+            .expected_z = true,
+        },
+    };
+
+    for (cases) |c| {
+        resetCtx(&ctx);
+        const inst = try parseInst(c.name);
+        ctx.instructions = &[_]parser_root.Instruction{inst};
+        if (c.ax != 0) ctx.setRegister(registerFromString("ax").?, c.ax);
+        if (c.bx != 0) ctx.setRegister(registerFromString("bx").?, c.bx);
+        if (c.cx != 0) ctx.setRegister(registerFromString("cx").?, c.cx);
+        if (c.bp != 0) ctx.setRegister(registerFromString("bp").?, c.bp);
+        if (c.di != 0) ctx.setRegister(registerFromString("di").?, c.di);
+        if (c.mem_addr) |addr| ctx.dataseg[addr] = c.mem_value;
+        ctx.flags.c = c.init_c;
+        ctx.flags.z = c.init_z;
+
+        try executeInstruction(&ctx);
+        try testing.expectEqual(c.expected_c, ctx.flags.c);
+        try testing.expectEqual(c.expected_z, ctx.flags.z);
+    }
 }
